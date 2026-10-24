@@ -63,6 +63,7 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
     prev_idle = 0.0
     scan_since = float(store.meta_get(conn, "scan_since") or (time.time() - 3600))
     n = 0
+    started = time.time()
     if not quiet:
         print("pcbtrack %s tracking every %ds -> %s"
               % (__import__("pcbtrack").__version__, tick, store.db_path(cfg)))
@@ -70,6 +71,12 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
         while max_ticks is None or n < max_ticks:
             n += 1
             loop_t = time.time()
+            # "Stop tracking" (dashboard or `pcbtrack stop`) leaves a request
+            # in the database; a clean exit, so the time shows as not tracked.
+            if live and float(store.meta_get(conn, "stop_request") or 0) > started:
+                if not quiet:
+                    print("stop requested")
+                break
             try:
                 s = probe(tick)
                 if s is None:
@@ -121,7 +128,7 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                 prev_state, prev_t, prev_idle = state, t, s.idle
                 store.put_label(conn, oid, lab["project_id"], lab["stage"],
                                 lab["doc"], lab["confidence"], lab["source"],
-                                lab["reason"])
+                                lab["reason"], lab.get("project_guess", 0))
                 store.meta_set(conn, "heartbeat", t)
                 store.meta_set(conn, "collector", collector)
                 conn.commit()
@@ -137,6 +144,67 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
         conn.close()
         lock.release()
     return 0
+
+
+def is_running(cfg):
+    probe = Lock(cfg["port"] + 1)
+    free = probe.acquire()
+    probe.release()
+    return not free
+
+
+def request_stop(cfg, wait=10.0):
+    """Ask the running tracker to exit; True once it has."""
+    conn = store.connect(store.db_path(cfg))
+    store.meta_set(conn, "stop_request", time.time())
+    conn.commit()
+    conn.close()
+    end = time.time() + wait
+    while time.time() < end:
+        if not is_running(cfg):
+            return True
+        time.sleep(0.5)
+    return not is_running(cfg)
+
+
+def start_detached(cfg):
+    """Start `pcbtrack track` in the background with no console window."""
+    import subprocess
+    exe = sys.executable
+    w = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    if sys.platform == "win32" and os.path.exists(w):
+        exe = w
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    flags = 0
+    if sys.platform == "win32":
+        flags = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED|NEW_GROUP|NO_WINDOW
+    subprocess.Popen([exe, "-m", "pcbtrack", "track"], cwd=root,
+                     creationflags=flags, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL)
+    for _ in range(20):
+        if is_running(cfg):
+            return True
+        time.sleep(0.25)
+    return is_running(cfg)
+
+
+def startup_file():
+    return os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
+                        "Start Menu", "Programs", "Startup", "pcbtrack.bat")
+
+
+def set_autostart(on):
+    """Start tracking at login: the same Startup-folder entry install.bat makes."""
+    path = startup_file()
+    if not on:
+        if os.path.exists(path):
+            os.remove(path)
+        return False
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(path, "w", encoding="ascii", errors="replace") as f:
+        f.write('@echo off\r\ncd /d "%s"\r\nstart "" /min pythonw -m pcbtrack track\r\n' % root)
+    return True
 
 
 def status(cfg=None):

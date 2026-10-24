@@ -42,6 +42,9 @@ viewing) happened. Confirmed by probe against Altium Designer 26.7.1:
    genuine crash safety net.
 4. Double-click `install.bat`. It checks the setup and starts tracking at login.
 5. Double-click `dashboard.bat` to see your day.
+6. To switch it off: **Stop tracking** on the dashboard, or `stop.bat` (stops
+   tracking and closes the dashboard). `track.bat` starts it again; untick
+   **start at login** if you only want it when you ask.
 
 Full walkthrough: [docs/07-install-windows.md](docs/07-install-windows.md).
 
@@ -50,6 +53,8 @@ Full walkthrough: [docs/07-install-windows.md](docs/07-install-windows.md).
 ```
 python -m pcbtrack doctor      check the setup, say what is missing
 python -m pcbtrack track       start tracking (one instance only)
+python -m pcbtrack stop        stop tracking (--all also closes the dashboard)
+python -m pcbtrack autostart off   do not start at login (on to undo)
 python -m pcbtrack serve       dashboard at http://127.0.0.1:8765
 python -m pcbtrack report      write md / csv / json for today
 python -m pcbtrack note "finished power stage, 3 footprints done"
@@ -62,7 +67,10 @@ The dashboard shows a **live strip** of what you are doing right now
 (refreshed every 5 s from a 291-byte endpoint), the full 24 hours, the
 breakdown by project / stage / software / document, a review queue of the
 blocks it is unsure about, and a box for a short note on what you actually got
-done. One client job can hold several Altium projects, grouped with the
+done. Every work block gets a project: by file or title, by a shared word in
+the project name (`Buck converter` <- `Buck_Regulator.PcbDoc`), or, when
+nothing names one, a guess from the project you last worked on, shown in
+amber until you confirm or change it. One client job can hold several Altium projects, grouped with the
 "Groups under" dropdown, and library + footprint + component-search time can
 be merged into one report line with a checkbox.
 

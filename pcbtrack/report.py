@@ -23,6 +23,7 @@ def load_day(conn, cfg, day, now=None, backfill=True):
     if backfill:
         try:
             classify.backfill(conn, cfg, t0, t1)
+            classify.guess_projects(conn, t0, min(t1, now))
         except Exception:
             pass
     iv = sessionize.intervals(conn, t0, max(t0, min(t1, now)),
@@ -85,6 +86,7 @@ def summary(conn, cfg, day, now=None):
     total_work = sum(x["secs"] for x in work)
     unknown = sum(x["secs"] for x in work if x["stage"] == "unknown")
     unassigned = sum(x["secs"] for x in work if not x["project_id"])
+    guessed = sum(x["secs"] for x in work if x.get("guess"))
     notes = store.notes_between(conn, day.isoformat(), day.isoformat())
     by_pd = {}
     for x in work:
@@ -99,6 +101,7 @@ def summary(conn, cfg, day, now=None):
         "confirmed_s": confirmed,
         "unknown_s": unknown,
         "unassigned_s": unassigned,
+        "guessed_s": guessed,
         "by_stage": sessionize.rollup(work, stage_of),
         "by_project": {names.get(k, "(unassigned)"): v for k, v in
                        sessionize.rollup(work, proj_of).items()},
@@ -112,7 +115,7 @@ def summary(conn, cfg, day, now=None):
                       "stage": x["stage"], "project": names.get(x["project_id"], ""),
                       "doc": x["doc"], "app": x["app"],
                       "conf": round(x["confidence"], 2), "source": x["source"],
-                      "id": x["id"]} for x in iv],
+                      "guess": x.get("guess", 0), "id": x["id"]} for x in iv],
     }
 
 
@@ -127,12 +130,14 @@ def review_queue(conn, cfg, day, limit=25, now=None):
             continue
         if x["source"] in ("confirmed", "manual"):
             continue
-        if x["stage"] == "unknown" or not x["project_id"] or x["confidence"] < REVIEW_CONF:
+        if (x["stage"] == "unknown" or not x["project_id"] or x.get("guess")
+                or x["confidence"] < REVIEW_CONF):
             out.append({
                 "id": x["id"], "t0": x["t0"], "t1": x["t1"], "secs": x["secs"],
                 "app": x["app"], "title": x["title"], "doc": x["doc"],
                 "stage": x["stage"], "project": names.get(x["project_id"], ""),
                 "project_id": x["project_id"], "conf": round(x["confidence"], 2),
+                "guess": x.get("guess", 0),
             })
     out.sort(key=lambda r: -r["secs"])
     return out[:limit]
@@ -154,6 +159,9 @@ def markdown(conn, cfg, day, now=None):
       "Not assigned to a project: %s." % (
           fmt(s["confirmed_s"]), fmt(s["work_s"]), pct,
           fmt(s["unknown_s"]), fmt(s["unassigned_s"])))
+    if s["guessed_s"]:
+        A("")
+        A("Project guessed automatically (not confirmed): %s." % fmt(s["guessed_s"]))
     for title, d in (("By project", s["by_project"]), ("By work stage", s["by_stage"]),
                      ("By software", s["by_app"]), ("By document", s["by_doc"])):
         if not d:
@@ -214,7 +222,7 @@ def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
     agg = {k: {} for k in ("project", "stage", "doc", "app", "day")}
     ps, pd = {}, {}
     rows = []
-    tot = conf = unknown = unassigned = 0.0
+    tot = conf = unknown = unassigned = guessed = 0.0
     day = d0
     while day <= d1:
         iv, _, _ = load_day(conn, cfg, day, now)
@@ -229,6 +237,8 @@ def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
                 unknown += s
             if not x["project_id"]:
                 unassigned += s
+            if x.get("guess"):
+                guessed += s
             p, st = proj(x), stage(x)
             _add(agg["project"], p, s)
             _add(agg["stage"], st, s)
@@ -250,7 +260,7 @@ def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
         "from": d0.isoformat(), "to": d1.isoformat(),
         "projects_filter": [names.get(p, p) for p in want],
         "work_s": tot, "confirmed_s": conf, "unknown_s": unknown,
-        "unassigned_s": unassigned,
+        "unassigned_s": unassigned, "guessed_s": guessed,
         "by_project": _sorted(agg["project"]), "by_stage": _sorted(agg["stage"]),
         "by_doc": _sorted(agg["doc"]), "by_app": _sorted(agg["app"]),
         "by_day": dict(sorted(agg["day"].items())),
@@ -273,6 +283,9 @@ def range_markdown(r):
       "Stage unknown: %s. Not assigned to a project: %s." % (
           fmt(r["work_s"]), fmt(r["confirmed_s"]), pct,
           fmt(r["unknown_s"]), fmt(r["unassigned_s"])))
+    if r["guessed_s"]:
+        A("")
+        A("Project guessed automatically (not confirmed): %s." % fmt(r["guessed_s"]))
     for p, stages in sorted(r["by_project_stage"].items(),
                             key=lambda kv: -sum(kv[1].values())):
         A("")

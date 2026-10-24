@@ -60,6 +60,11 @@ def connect(path):
     if "parent_id" not in cols:
         # one client job can hold several Altium projects (main board + test jig)
         c.execute("ALTER TABLE projects ADD COLUMN parent_id TEXT")
+    lcols = {r["name"] for r in c.execute("PRAGMA table_info(labels)")}
+    if "project_guess" not in lcols:
+        # 1 = no signal named the project; it was guessed from nearby work and
+        # is shown in a reminder colour until the user confirms or changes it
+        c.execute("ALTER TABLE labels ADD COLUMN project_guess INTEGER DEFAULT 0")
     ncols = {r["name"] for r in c.execute("PRAGMA table_info(notes)")}
     if "day_to" not in ncols:
         # a note can cover a period ("all week: footprints for the buck stage")
@@ -243,19 +248,66 @@ def roll_up(pid, parents, depth=4):
 
 
 # ---------- labels ----------
-def put_label(c, obs_id, project_id, stage, doc, confidence, source, reason):
-    """Automation never overwrites a human decision."""
+def put_label(c, obs_id, project_id, stage, doc, confidence, source, reason,
+              guess=0):
+    """Automation never overwrites a human decision. A human save clears the
+    'guessed project' flag (guess defaults to 0)."""
     r = c.execute("SELECT source FROM labels WHERE obs_id=?", (obs_id,)).fetchone()
     if r and r["source"] in ("confirmed", "manual", "corrected") and source == "auto":
         return False
     c.execute(
-        "INSERT INTO labels(obs_id,project_id,stage,doc,confidence,source,reason,updated)"
-        " VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(obs_id) DO UPDATE SET"
+        "INSERT INTO labels(obs_id,project_id,stage,doc,confidence,source,reason,updated,"
+        "project_guess) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(obs_id) DO UPDATE SET"
         " project_id=excluded.project_id, stage=excluded.stage, doc=excluded.doc,"
         " confidence=excluded.confidence, source=excluded.source,"
-        " reason=excluded.reason, updated=excluded.updated",
-        (obs_id, project_id, stage, doc, confidence, source, reason, time.time()))
+        " reason=excluded.reason, updated=excluded.updated,"
+        " project_guess=excluded.project_guess",
+        (obs_id, project_id, stage, doc, confidence, source, reason, time.time(),
+         1 if guess else 0))
     return True
+
+
+# words too common in project and file names to tie the two together
+_GENERIC = {"board", "project", "projects", "main", "test", "design", "copy",
+            "final", "new", "pcb", "schematic", "sheet", "rev", "version",
+            "microsoft", "edge", "chrome", "google", "altium", "designer",
+            "page", "pages", "personal", "home", "untitled", "document"}
+
+
+def _tokens(s):
+    return {t for t in re.split(r"[^a-z0-9]+", (s or "").lower())
+            if len(t) >= 4 and t not in _GENERIC and not t.isdigit()}
+
+
+def fuzzy_project(c, *texts):
+    """A project whose name shares a distinctive word with the window title or
+    the open document: "Buck converter" <- Buck_Regulator.PcbDoc. Returns the
+    project with the most shared words, or None when no word is shared or two
+    projects tie."""
+    have = set()
+    for t in texts:
+        have |= _tokens(t)
+    if not have:
+        return None
+    best, score, tie = None, 0, False
+    for r in c.execute("SELECT id,name FROM projects WHERE COALESCE(status,'')<>'closed'"):
+        n = len(_tokens(r["name"]) & have)
+        if n > score:
+            best, score, tie = r["id"], n, False
+        elif n and n == score:
+            tie = True
+    return None if tie else best
+
+
+def recent_project(c, before=None):
+    """The project of the latest block a real signal (or the user) named.
+    Used to guess a project when nothing on screen says which one."""
+    r = c.execute(
+        "SELECT l.project_id FROM labels l JOIN obs o ON o.id=l.obs_id"
+        " WHERE l.project_id IS NOT NULL AND COALESCE(l.project_guess,0)=0"
+        " AND o.t0<=? ORDER BY o.t1 DESC LIMIT 1",
+        (before if before is not None else time.time(),)).fetchone()
+    return r["project_id"] if r else None
 
 
 def audit(c, what, before, after):

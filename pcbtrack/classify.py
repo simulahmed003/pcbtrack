@@ -35,7 +35,8 @@ class Classifier:
         self.doc2stage = cfg["doctype_stage"]
         self.altium_procs = {a.lower() for a in cfg["altium"]["processes"]}
         self.main_class = cfg["altium"]["main_window_class"].lower()
-        self.sticky = None          # (project_id, stage, t)
+        self.sticky = None          # (project_id, stage, t, app)
+        self.last_project = None    # last project a real signal named
         self.reload_rules()
 
     def reload_rules(self):
@@ -75,7 +76,8 @@ class Classifier:
     def label(self, t, app, title, wclass, state, sample=None):
         """-> dict(project_id, stage, doc, confidence, source, reason)"""
         out = {"project_id": None, "stage": None, "doc": None,
-               "confidence": 0.0, "source": "auto", "reason": ""}
+               "confidence": 0.0, "source": "auto", "reason": "",
+               "project_guess": 0}
         if state != "work":
             out["stage"] = state
             out["confidence"] = 1.0
@@ -107,6 +109,11 @@ class Classifier:
             pid = store.match_project(self.c, shown)
         if not pid and sample is not None and getattr(sample, "doc", None):
             pid = store.match_project(self.c, sample.doc)
+        if not pid and shown != PRIVATE:
+            # "Buck converter" project <- Buck_Regulator.PcbDoc in front
+            pid = store.fuzzy_project(self.c, shown, getattr(sample, "doc", None))
+            if pid:
+                out["reason"] = (out["reason"] + " name-match").strip()
 
         # --- stage ---
         if is_dialog_pre(wclass, self.main_class) and is_altium_pre(appl, self.altium_procs):
@@ -184,9 +191,23 @@ class Classifier:
         if not pid and out["stage"] not in (None, "unknown"):
             if self.sticky and t - self.sticky[2] <= self.cfg["sticky_minutes"] * 60:
                 out["project_id"] = self.sticky[0]
+                out["project_guess"] = 1
                 out["reason"] += " +carried project"
         if out["project_id"] and out["stage"] not in ("unknown", None):
             self.sticky = (out["project_id"], out["stage"], t, appl)
+        if out["project_id"]:
+            if not out["project_guess"]:
+                self.last_project = out["project_id"]
+        elif shown != PRIVATE:
+            # 9. Nothing on screen names a project: guess the one you last
+            #    worked on, flagged so the dashboard shows it in a reminder
+            #    colour. If you never change it, it stays as recorded.
+            if self.last_project is None:
+                self.last_project = store.recent_project(self.c, t)
+            if self.last_project:
+                out["project_id"] = self.last_project
+                out["project_guess"] = 1
+                out["reason"] += " +guessed project (last worked on)"
         return out
 
 
@@ -207,6 +228,45 @@ def learn(conn, match, field, value, scope="global"):
     conn.execute("INSERT INTO rules(match,field,value,scope,created)"
                  " VALUES(?,?,?,?,?)", (match, field, value, scope, time.time()))
     conn.commit()
+
+
+def guess_projects(conn, t0, t1):
+    """Give every unassigned automatic work block in [t0,t1) a project: the
+    nearest block in time whose project was named by a real signal or by the
+    user, else the last such project before the window. Flagged
+    project_guess=1 so it shows in a reminder colour; a human label is never
+    touched, and private titles are left alone."""
+    rows = conn.execute(
+        "SELECT o.id,o.t0,o.t1,o.title,l.project_id,l.source,"
+        "       COALESCE(l.project_guess,0) g"
+        "  FROM obs o JOIN labels l ON l.obs_id=o.id"
+        " WHERE o.state='work' AND o.t1>=? AND o.t0<? ORDER BY o.t0", (t0, t1)).fetchall()
+    known = [(r["t0"], r["t1"], r["project_id"]) for r in rows
+             if r["project_id"] and not r["g"]]
+    fallback = None
+    n = 0
+    for r in rows:
+        if r["project_id"] or r["source"] != "auto" or r["title"] == PRIVATE:
+            continue
+        best, dist = None, None
+        for a, b, p in known:
+            d = r["t0"] - b if b <= r["t0"] else (a - r["t1"] if a >= r["t1"] else 0)
+            if dist is None or d < dist:
+                best, dist = p, d
+        if not best:
+            if fallback is None:
+                fallback = store.recent_project(conn, t0) or ""
+            best = fallback or None
+        if not best:
+            continue
+        conn.execute("UPDATE labels SET project_id=?, project_guess=1,"
+                     " reason=COALESCE(reason,'')||' +guessed project (nearest work)'"
+                     " WHERE obs_id=? AND source='auto' AND project_id IS NULL",
+                     (best, r["id"]))
+        n += 1
+    if n:
+        conn.commit()
+    return n
 
 
 def backfill(conn, cfg, t0, t1):

@@ -59,7 +59,11 @@ class H(BaseHTTPRequestHandler):
                 s["generated"] = time.time()
                 return self._send(200, s)
             if u.path == "/api/now":
-                return self._send(200, report.now_snapshot(c, CFG))
+                from . import tracker
+                n = report.now_snapshot(c, CFG)
+                n["running"] = tracker.is_running(CFG)
+                n["autostart"] = os.path.exists(tracker.startup_file())
+                return self._send(200, n)
             if u.path == "/api/markdown":
                 return self._send(200, report.markdown(c, CFG, _day(q)),
                                   "text/plain; charset=utf-8")
@@ -154,6 +158,23 @@ class H(BaseHTTPRequestHandler):
                                        body.get("stage") or "unknown",
                                        (body.get("text") or "")[:200])
                 return self._send(200, {"ok": True, "id": oid})
+            if u.path == "/api/tracker":
+                from . import tracker
+                if body.get("action") == "stop":
+                    ok = tracker.request_stop(CFG)
+                elif body.get("action") == "start":
+                    ok = tracker.is_running(CFG) or tracker.start_detached(CFG)
+                else:
+                    return self._send(400, {"error": "action must be start or stop"})
+                return self._send(200, {"ok": ok, "running": tracker.is_running(CFG)})
+            if u.path == "/api/autostart":
+                from . import tracker
+                on = tracker.set_autostart(bool(body.get("on")))
+                return self._send(200, {"ok": True, "autostart": on})
+            if u.path == "/api/quit":
+                self._send(200, {"ok": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
             if u.path == "/api/manual/delete":
                 ok = store.delete_manual(c, int(body["id"]))
                 return self._send(200 if ok else 404, {"ok": ok})

@@ -11,6 +11,8 @@ USAGE = """pcbtrack %s - local work-hour tracker for PCB/EDA work
                                       log what you actually did today
   python -m pcbtrack log MIN "text" [--project NAME] [--stage STAGE]
                                       add off-PC work (meeting, milling, soldering)
+  python -m pcbtrack stop [--all]     stop tracking (--all also closes the dashboard)
+  python -m pcbtrack autostart on|off start tracking when you log in, or not
   python -m pcbtrack status           is it running, how big is the data
   python -m pcbtrack selfcheck        append a performance line to perf.log
   python -m pcbtrack probe            inspect Altium windows (run while Altium is open)
@@ -127,6 +129,25 @@ def main(argv=None):
         base = report.export(c, cfg, day)
         print(report.markdown(c, cfg, day))
         print("wrote %s.md / .csv / .json" % base)
+        return 0
+    if cmd == "stop":
+        if tracker.is_running(cfg):
+            print("tracker stopped" if tracker.request_stop(cfg) else "tracker did not stop in 10 s")
+        else:
+            print("tracker was not running")
+        if "--all" in args:
+            import urllib.request
+            try:
+                urllib.request.urlopen(urllib.request.Request(
+                    "http://127.0.0.1:%d/api/quit" % cfg["port"], data=b"{}"), timeout=3)
+                print("dashboard closed")
+            except Exception:
+                print("dashboard was not running")
+        return 0
+    if cmd == "autostart":
+        on = (args[:1] or ["on"])[0] != "off"
+        tracker.set_autostart(on)
+        print("start at login: %s" % ("on" if on else "off"))
         return 0
     if cmd == "note":
         return cmd_note(cfg, args)

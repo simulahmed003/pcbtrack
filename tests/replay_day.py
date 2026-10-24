@@ -223,6 +223,39 @@ def main():
     check("range csv has rows", "Study,study_learning" in _rp.range_csv(rr))
     c3.close()
 
+    # --- project is matched by name, else guessed and flagged ---
+    tmp5 = tempfile.mkdtemp()
+    cfg5 = config.load()
+    cfg5["_data_dir"] = tmp5
+    cfg5["port"] = 18855
+    c5 = store.connect(store.db_path(cfg5))
+    buck = store.create_project(c5, "Buck converter", client="Freelance")
+    c5.close()
+    s5 = [(120, "msedge.exe", "YouTube - Microsoft Edge", "Chrome_WidgetWin_1", 2, False),
+          (180, "X2.EXE", "Altium Designer (26.7.1)", TD, 2, False,
+           "Buck_Regulator.PcbDoc", "PCB", "document tab"),
+          (300, "claude.exe", "Claude", "Chrome_WidgetWin_1", 2, False)]
+    tracker.run(cfg=cfg5, probe=Replay(s5, t0=start),
+                max_ticks=sum(x[0] for x in s5) // tick, quiet=True)
+    c5 = store.connect(store.db_path(cfg5))
+    end5 = start + sum(x[0] for x in s5)
+    sm5 = _rp.summary(c5, cfg5, day, now=end5)
+    print("   name match/guess:", {k: "%.0fs" % v for k, v in sm5["by_project"].items()},
+          "guessed %.0fs" % sm5["guessed_s"])
+    check("PcbDoc assigned to the project whose name it shares",
+          sm5["by_project"].get("Buck converter", 0) >= 595, str(sm5["by_project"]))
+    check("no work left unassigned", sm5["unassigned_s"] == 0, "%.0fs" % sm5["unassigned_s"])
+    check("guessed time flagged (before and after the Altium block)",
+          400 <= sm5["guessed_s"] <= 430, "%.0fs" % sm5["guessed_s"])
+    rq = _rp.review_queue(c5, cfg5, day, now=end5)
+    check("guessed blocks are in the review list", any(r["guess"] for r in rq))
+    g = [r for r in rq if r["guess"]][0]
+    store.put_label(c5, g["id"], buck, "study_learning", None, 1.0, "confirmed", "user")
+    c5.commit()
+    check("confirming clears the guess flag",
+          c5.execute("SELECT project_guess FROM labels WHERE obs_id=?", (g["id"],)).fetchone()[0] == 0)
+    c5.close()
+
     print("\n%d check(s) failed" % len(FAILS))
     return 1 if FAILS else 0
 

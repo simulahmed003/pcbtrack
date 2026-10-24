@@ -20,6 +20,7 @@ def _row(r, a, b):
         "state": r["state"], "app": r["app"], "title": r["title"],
         "project_id": r["project_id"], "stage": r["stage"], "doc": r["doc"],
         "confidence": r["confidence"] or 0.0, "source": r["source"] or "auto",
+        "guess": r["project_guess"] or 0,
     }
 
 
@@ -41,7 +42,8 @@ def intervals(conn, t0, t1, join_gap=11.0):
     studying" replaces whatever the tracker guessed for those minutes."""
     rows = conn.execute(
         "SELECT o.id,o.t0,o.t1,o.state,o.app,o.title,o.wclass,o.collector,"
-        "       l.project_id,l.stage,l.doc,l.confidence,l.source"
+        "       l.project_id,l.stage,l.doc,l.confidence,l.source,"
+        "       COALESCE(l.project_guess,0) project_guess"
         "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"
         " WHERE o.t1>=? AND o.t0<? ORDER BY o.t0, o.id",
         (t0 - join_gap, t1)).fetchall()
@@ -106,7 +108,7 @@ def with_off(iv, t0, t1, now=None):
 def _off(a, b):
     return {"id": None, "t0": a, "t1": b, "secs": b - a, "state": "off",
             "app": "", "title": "", "project_id": None, "stage": "off",
-            "doc": None, "confidence": 1.0, "source": "auto"}
+            "doc": None, "confidence": 1.0, "source": "auto", "guess": 0}
 
 
 def apply_grace(iv, grace):
@@ -123,6 +125,7 @@ def apply_grace(iv, grace):
             x["state"] = "work"
             x["stage"] = prev["stage"]
             x["project_id"] = prev["project_id"]
+            x["guess"] = prev.get("guess", 0)
             x["source"] = "grace"
     return iv
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 - 2026-10-24
+Added
+- No work block is left without a project. Order: project file or title,
+  project alias, a distinctive word shared between a project name and the
+  window title or open document, else a GUESS from the project last named by
+  a real signal (live) or the nearest such block in time (past data).
+  Guesses are flagged (`labels.project_guess`), shown in amber in Review and
+  striped on the timeline, counted as "Project guessed" in every report, and
+  kept as recorded if ignored. Saving a block clears the flag.
+- "Accept all as shown" in Review.
+- Tracker on/off: Stop / Start tracking on the dashboard, `pcbtrack stop
+  [--all]`, `stop.bat`; "start at login" switch and `pcbtrack autostart
+  on|off`; "Close dashboard" button.
+
 ## 0.3.0 - 2026-10-24
 From the first live day on the owner's PC.
 
