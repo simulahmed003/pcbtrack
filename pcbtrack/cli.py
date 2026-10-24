@@ -45,11 +45,7 @@ def cmd_log(cfg, args):
     c = store.connect(store.db_path(cfg))
     pid = store.propose_project(c, name) if name else None
     t1 = time.time(); t0 = t1 - mins * 60
-    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
-                    " VALUES(?,?,?,?,?,?,?)",
-                    (t0, t1, "work", "manual", text[:200], "", "manual"))
-    store.put_label(c, cur.lastrowid, pid, stage, None, 1.0, "manual", "entered by hand")
-    c.commit()
+    store.add_manual(c, t0, t1, pid, stage, text)
     print("logged %.0f min as %s" % (mins, stage))
     return 0
 

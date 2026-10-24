@@ -60,6 +60,12 @@ def connect(path):
     if "parent_id" not in cols:
         # one client job can hold several Altium projects (main board + test jig)
         c.execute("ALTER TABLE projects ADD COLUMN parent_id TEXT")
+    ncols = {r["name"] for r in c.execute("PRAGMA table_info(notes)")}
+    if "day_to" not in ncols:
+        # a note can cover a period ("all week: footprints for the buck stage")
+        # and several projects at once (comma-separated ids in project_ids)
+        c.execute("ALTER TABLE notes ADD COLUMN day_to TEXT")
+        c.execute("ALTER TABLE notes ADD COLUMN project_ids TEXT")
     if first:
         c.execute("INSERT OR IGNORE INTO meta(k,v) VALUES('schema','1')")
     c.commit()
@@ -152,7 +158,8 @@ def close_open_intervals(c, tick):
     if not hb:
         return 0
     hb = float(hb)
-    n = c.execute("UPDATE obs SET t1=? WHERE t1>?", (hb, hb)).rowcount
+    n = c.execute("UPDATE obs SET t1=? WHERE t1>? AND t0<=?"
+                  " AND COALESCE(collector,'')<>'manual'", (hb, hb, hb)).rowcount
     c.commit()
     return n
 
@@ -257,7 +264,88 @@ def audit(c, what, before, after):
                json.dumps(after, default=str)))
 
 
-def add_note(c, day, project_id, text):
-    c.execute("INSERT INTO notes(day,project_id,text,created) VALUES(?,?,?,?)",
-              (day, project_id, text, time.time()))
+def add_note(c, day, project_id, text, day_to=None, project_ids=None):
+    """day/day_to are ISO dates; project_ids is a list (may be empty)."""
+    ids = [p for p in (project_ids or ([project_id] if project_id else [])) if p]
+    c.execute("INSERT INTO notes(day,day_to,project_id,project_ids,text,created)"
+              " VALUES(?,?,?,?,?,?)",
+              (day, day_to if day_to and day_to > day else None,
+               ids[0] if ids else None, ",".join(ids) or None, text, time.time()))
     c.commit()
+
+
+def notes_between(c, d0, d1):
+    """Notes whose period overlaps [d0, d1] (ISO date strings, inclusive)."""
+    names = project_names(c)
+    out = []
+    for n in c.execute(
+            "SELECT id,day,day_to,project_id,project_ids,text FROM notes"
+            " WHERE day<=? AND COALESCE(day_to,day)>=? ORDER BY day,created",
+            (d1, d0)):
+        ids = [p for p in (n["project_ids"] or n["project_id"] or "").split(",") if p]
+        out.append({"id": n["id"], "day": n["day"], "day_to": n["day_to"],
+                    "project_ids": ids,
+                    "projects": [names.get(p, p) for p in ids],
+                    "project": ", ".join(names.get(p, p) for p in ids),
+                    "text": n["text"]})
+    return out
+
+
+def create_project(c, name, client=None, parent_id=None, status="active"):
+    """A project the user declares up front, before any file is seen."""
+    name = name.strip()
+    r = c.execute("SELECT id FROM projects WHERE name=? COLLATE NOCASE", (name,)).fetchone()
+    if r:
+        return r["id"]
+    pid = new_id("pj")
+    cid = ensure_client(c, client.strip()) if client and client.strip() else None
+    c.execute("INSERT INTO projects(id,name,client_id,status,created,parent_id)"
+              " VALUES(?,?,?,?,?,?)",
+              (pid, name, cid, status, time.time(), parent_id or None))
+    c.execute("INSERT INTO aliases(project_id,pattern,kind) VALUES(?,?,?)",
+              (pid, re.escape(name), "user"))
+    audit(c, "create_project:" + pid, None, name)
+    c.commit()
+    return pid
+
+
+def add_manual(c, t0, t1, project_id, stage, text):
+    """Hand-entered work: off-PC work (meeting, milling, soldering, study on
+    paper) or a correction for a period the tracker got wrong. It outranks
+    tracked time for the same minutes (see sessionize.intervals)."""
+    if t1 <= t0:
+        raise ValueError("end must be after start")
+    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
+                    " VALUES(?,?,?,?,?,?,?)",
+                    (t0, t1, "work", "manual", (text or "")[:200], "", "manual"))
+    put_label(c, cur.lastrowid, project_id or None, stage or "unknown", None,
+              1.0, "manual", "entered by hand")
+    audit(c, "manual:%s" % cur.lastrowid, None,
+          {"t0": t0, "t1": t1, "project_id": project_id, "stage": stage})
+    c.commit()
+    return cur.lastrowid
+
+
+def manual_between(c, t0, t1):
+    names = project_names(c)
+    return [{"id": r["id"], "t0": r["t0"], "t1": r["t1"], "text": r["title"],
+             "stage": r["stage"], "project_id": r["project_id"],
+             "project": names.get(r["project_id"], "")}
+            for r in c.execute(
+                "SELECT o.id,o.t0,o.t1,o.title,l.stage,l.project_id FROM obs o"
+                " LEFT JOIN labels l ON l.obs_id=o.id"
+                " WHERE o.collector='manual' AND o.t1>? AND o.t0<? ORDER BY o.t0",
+                (t0, t1))]
+
+
+def delete_manual(c, oid):
+    """Only hand-entered rows can be removed; tracked observations are
+    immutable."""
+    r = c.execute("SELECT * FROM obs WHERE id=? AND collector='manual'", (oid,)).fetchone()
+    if not r:
+        return False
+    audit(c, "delete_manual:%s" % oid, dict(r), None)
+    c.execute("DELETE FROM labels WHERE obs_id=?", (oid,))
+    c.execute("DELETE FROM obs WHERE id=?", (oid,))
+    c.commit()
+    return True

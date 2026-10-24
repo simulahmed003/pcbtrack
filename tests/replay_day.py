@@ -158,13 +158,70 @@ def main():
     print("   active-doc docs  :", {k: "%.0fm" % (v / 60) for k, v in bd.items()})
     check("active document: all four types separated",
           bs.get("schematic", 0) > 1500 and bs.get("library_footprint", 0) > 700
-          and bs.get("library_symbol", 0) > 700 and bs.get("routing", 0) > 1500)
+          and bs.get("library_symbol", 0) > 700 and bs.get("pcb_layout", 0) > 1500)
     check("active document: dialog still wins over it", bs.get("drc", 0) > 250)
     check("active document: zero unknown", bs.get("unknown", 0) == 0,
           "%.0fs" % bs.get("unknown", 0))
     check("per-document breakdown present",
           len([k for k in bd if k]) == 4, str(sorted(k for k in bd if k)))
     c2.close()
+
+    # --- 2026-10-24 live findings: short visits, PcbLib, carry-over ---
+    tmp3 = tempfile.mkdtemp()
+    cfg3 = config.load()
+    cfg3["_data_dir"] = tmp3
+    cfg3["port"] = 18833
+    s3 = [(5, "X2.EXE", ALT, TD, 2, False, "Buttons.SchDoc", "SCH", "document tab"),
+          (5, "X2.EXE", ALT, TD, 2, False, "USB_C.SchDoc", "SCH", "document tab"),
+          (5, "X2.EXE", ALT, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab"),
+          (60, "X2.EXE", ALT, TD, 2, False, "ESC_PCBLIB.PcbLib", "PCBLIB", "document tab"),
+          (300, "claude.exe", "Claude", "Chrome_WidgetWin_1", 2, False),
+          (300, "msedge.exe", "ESE 4025 Study Pack - Microsoft Edge", "Chrome_WidgetWin_1", 2, False)]
+    tracker.run(cfg=cfg3, probe=Replay(s3, t0=start),
+                max_ticks=sum(x[0] for x in s3) // tick, quiet=True)
+    c3 = store.connect(store.db_path(cfg3))
+    end3 = start + sum(x[0] for x in s3)
+    sm3 = _rp.summary(c3, cfg3, day, now=end3)
+    print("   short visits docs:", {k: "%.0fs" % v for k, v in sm3["by_doc"].items()})
+    check("one-tick document visit is counted, not 0 s",
+          sm3["by_doc"].get("Buttons.SchDoc", 0) >= 4 and sm3["by_doc"].get("USB_C.SchDoc", 0) >= 4,
+          str(sm3["by_doc"]))
+    check("chat/browser after Altium does not inherit its stage",
+          sm3["by_stage"].get("unknown", 0) >= 550, str(sm3["by_stage"]))
+    ok3, got3, want3 = sessionize.check_invariant(
+        report_load(c3, cfg3, day, end3)[0], t0, t1, now=end3)
+    check("24h accounting exact with gap joining", ok3, "%.0fs vs %.0fs" % (got3, want3))
+
+    from pcbtrack.altium import pick_active
+    d, k, _ = pick_active([("TdxTabSheet", "ESC_PCBLIB.PcbLib", True),
+                           ("TPCBView_GraphicalForm", "", True)])
+    check("PcbLib tab in a PCB-class editor is footprint library", k == "PCBLIB", str(k))
+
+    # manual entry overrides tracked minutes and fills untracked ones
+    pid = store.create_project(c3, "Study", client="Self")
+    store.add_manual(c3, start + 400, start + 500, pid, "study_learning", "read datasheet")
+    store.add_manual(c3, end3 + 600, end3 + 1200, pid, "client_meeting", "call")
+    sm4 = _rp.summary(c3, cfg3, day, now=end3 + 1300)
+    check("manual entry replaces tracked time", 95 <= sm4["by_stage"].get("study_learning", 0) <= 105,
+          str(sm4["by_stage"]))
+    check("manual entry fills untracked time", 595 <= sm4["by_stage"].get("client_meeting", 0) <= 605)
+    ok4, got4, want4 = sessionize.check_invariant(
+        report_load(c3, cfg3, day, end3 + 1300)[0], t0, t1, now=end3 + 1300)
+    check("24h accounting exact with manual entries", ok4, "%.0fs vs %.0fs" % (got4, want4))
+
+    # notes over a period and several projects; date-range report
+    other = store.create_project(c3, "Kairon")
+    store.add_note(c3, (day - dt.timedelta(days=2)).isoformat(), None, "week of footprints",
+                   day_to=day.isoformat(), project_ids=[pid, other])
+    check("period note shows on a day inside it",
+          len(_rp.summary(c3, cfg3, day, now=end3)["notes"]) == 1)
+    rr = _rp.range_summary(c3, cfg3, day - dt.timedelta(days=3), day, [pid], now=end3 + 1300)
+    check("range report filtered to one project",
+          list(rr["by_project"]) == ["Study"] and rr["notes"], str(rr["by_project"]))
+    md = _rp.range_markdown(rr)
+    check("range markdown has stages and notes", "study_learning" in md and "week of footprints" in md)
+    check("range csv has rows", "Study,study_learning" in _rp.range_csv(rr))
+    c3.close()
 
     print("\n%d check(s) failed" % len(FAILS))
     return 1 if FAILS else 0

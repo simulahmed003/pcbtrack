@@ -2,8 +2,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>pcbtrack</title><style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mut:#64707d;--line:#e3e7ec;--acc:#0f766e;
---work:#0f766e;--idle:#f59e0b;--locked:#8b5cf6;--off:#cbd5e1}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1418;--card:#171e24;--ink:#e8edf2;--mut:#8b98a5;--line:#26303a;--acc:#2dd4bf;--off:#2a3540}}
+--work:#0f766e;--idle:#f59e0b;--locked:#8b5cf6;--off:#cbd5e1;--man:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1418;--card:#171e24;--ink:#e8edf2;--mut:#8b98a5;--line:#26303a;--acc:#2dd4bf;--off:#2a3540;--man:#60a5fa}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:14px/1.45 system-ui,Segoe UI,sans-serif}
 .wrap{max-width:1080px;margin:0 auto;padding:18px 16px 56px}
@@ -11,30 +11,39 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
 h1{font-size:19px;margin:0}.sub{color:var(--mut);font-size:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 h2{font-size:12px;margin:0 0 10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+h3{font-size:13px;margin:12px 0 4px}
 .kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .k b{display:block;font-size:22px;margin-top:2px}.k span{color:var(--mut);font-size:12px}
 .tl{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--off)}
 .tl i{display:block;height:100%}.ticks{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px}
 .row{display:grid;grid-template-columns:minmax(120px,190px) 1fr 70px;gap:8px;align-items:center;margin:6px 0}
+.row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar{height:9px;background:var(--line);border-radius:5px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
 .row em{font-style:normal;color:var(--mut);text-align:right;font-variant-numeric:tabular-nums}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 5px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .two{display:grid;gap:12px;grid-template-columns:1fr 1fr}@media(max-width:780px){.two{grid-template-columns:1fr}}
+.tw{overflow-x:auto}
 button,select,input,textarea{font:inherit;color:var(--ink);background:var(--card);
 border:1px solid var(--line);border-radius:8px;padding:7px 9px;max-width:100%}
 button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
-button.s{padding:4px 8px;font-size:12px}
+button.s{padding:4px 8px;font-size:12px}button.x{padding:2px 7px;font-size:12px;color:var(--mut)}
 .flex{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));align-items:end}
+.grid label,.lab{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
 .pill{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
-.warn{color:#b45309}dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(720px,93vw)}
-textarea{width:100%;min-height:70px}pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);padding:10px;border-radius:8px;max-height:320px;overflow:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chips label{display:flex;gap:5px;align-items:center;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer}
+.warn{color:#b45309}dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(760px,93vw)}
+textarea{width:100%;min-height:64px}pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);padding:10px;border-radius:8px;max-height:420px;overflow:auto}
 .muted{color:var(--mut)}
 #live{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-left:3px solid var(--acc);padding-left:12px}
 #live b{font-size:16px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%}
 .beat{background:#22c55e;animation:pulse 2s infinite}@keyframes pulse{50%{opacity:.25}}
 .cold{background:var(--mut)}
 label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut);cursor:pointer}
+.item{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
 </style></head><body><div class="wrap">
 <header>
   <div><h1>pcbtrack</h1><div class="sub" id="sub">local only &middot; nothing uploaded</div></div>
@@ -42,8 +51,8 @@ label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut)
     <button class="s" id="prev">&larr;</button>
     <input type="date" id="date">
     <button class="s" id="next">&rarr;</button>
-    <button class="s" id="md">Report</button>
-    <button class="s p" id="exp">Export</button>
+    <button class="s" id="today">Today</button>
+    <button class="s" id="md">Day report</button>
   </div>
 </header>
 
@@ -62,10 +71,27 @@ label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut)
   <div class="sub" style="margin-top:9px" id="legend"></div>
 </div>
 
+<div class="card"><h2>Add time by hand</h2>
+  <div class="sub" style="margin-bottom:8px">Study, meetings, milling, soldering, or any period the tracker got wrong.
+  A hand entry replaces tracked time for the same minutes.</div>
+  <div class="grid">
+    <label>Date<input type="date" id="mDate"></label>
+    <label>From<input type="time" id="mStart"></label>
+    <label>To<input type="time" id="mEnd"></label>
+    <label>Project<select id="mProj" class="projsel"></select></label>
+    <label>Work stage<select id="mStage" class="stagesel"></select></label>
+  </div>
+  <div class="flex" style="margin-top:8px">
+    <input id="mText" placeholder="what you did, e.g. read BTN7960 datasheet / client call" style="flex:1 1 260px">
+    <button class="p" id="mAdd">Add time</button>
+  </div>
+  <div id="manual" style="margin-top:8px"></div>
+</div>
+
 <div class="card" id="reviewCard"><h2>Review &mdash; biggest uncertain blocks first</h2>
   <div class="sub" style="margin-bottom:8px">The tracker guesses; you decide. Everything here stays
   marked <em>auto</em> in reports until you confirm it.</div>
-  <table id="review"></table>
+  <div class="tw"><table id="review"></table></div>
 </div>
 
 <div class="two">
@@ -77,20 +103,55 @@ label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut)
 </div>
 <div class="two">
   <div class="card"><h2>By software</h2><div id="app"></div></div>
-  <div class="card"><h2>By document</h2><div id="doc"></div></div>
+  <div class="card"><h2>Files by project</h2><div id="pdoc"></div></div>
 </div>
 
-<div class="two">
-  <div class="card"><h2>What I actually did today</h2>
-    <div class="sub" style="margin-bottom:8px">Optional. Goes into the daily report next to the hours.</div>
-    <select id="noteProj"></select>
-    <textarea id="noteText" placeholder="e.g. finished power stage schematic, made 3 footprints for the buck converter, started routing"></textarea>
-    <div class="flex" style="margin-top:8px"><button class="p" id="noteAdd">Add note</button></div>
-    <div id="notes" style="margin-top:10px"></div>
+<div class="card"><h2>What I did &mdash; notes</h2>
+  <div class="sub" style="margin-bottom:8px">Optional. A note can cover one day or a period, and one or several projects. It goes into the reports.</div>
+  <div class="grid">
+    <label>From<input type="date" id="nFrom"></label>
+    <label>To (optional)<input type="date" id="nTo"></label>
   </div>
-  <div class="card"><h2>Projects &amp; clients</h2>
-    <div class="sub" style="margin-bottom:8px">Names are editable. History follows the project, so renaming is safe.</div>
-    <table id="projects"></table>
+  <div class="lab" style="margin-top:8px">Projects (none = general note)</div>
+  <div class="chips" id="nProjs"></div>
+  <textarea id="noteText" placeholder="e.g. finished power stage schematic, made 3 footprints for the buck converter, started routing"></textarea>
+  <div class="flex" style="margin-top:8px"><button class="p" id="noteAdd">Add note</button></div>
+  <div id="notes" style="margin-top:10px"></div>
+</div>
+
+<div class="card"><h2>Report for a period</h2>
+  <div class="grid">
+    <label>From<input type="date" id="rFrom"></label>
+    <label>To<input type="date" id="rTo"></label>
+  </div>
+  <div class="flex" style="margin-top:8px">
+    <button class="s" data-r="week">This week</button><button class="s" data-r="lastweek">Last week</button>
+    <button class="s" data-r="month">This month</button><button class="s" data-r="lastmonth">Last month</button>
+  </div>
+  <div class="lab" style="margin-top:8px">Projects (none ticked = all)</div>
+  <div class="chips" id="rProjs"></div>
+  <div class="flex">
+    <button class="p" id="rView">Show</button>
+    <button id="rMd">Download report (.md)</button>
+    <button id="rCsv">Download summary (.csv)</button>
+    <button id="rCsvD">Download every block (.csv)</button>
+  </div>
+  <div id="rOut" style="margin-top:10px"></div>
+</div>
+
+<div class="card"><h2>Projects &amp; clients</h2>
+  <div class="sub" style="margin-bottom:8px">Add a project before you start, or rename the ones the tracker found. History follows the project, so renaming is safe.</div>
+  <div class="grid" style="margin-bottom:10px">
+    <label>New project<input id="npName" placeholder="e.g. Kairon controller"></label>
+    <label>Client<input id="npClient" placeholder="e.g. Caretron" list="clientList"></label>
+    <label>Groups under<select id="npParent"></select></label>
+    <button class="p" id="npAdd">Add project</button>
+  </div>
+  <datalist id="clientList"></datalist>
+  <div class="tw"><table id="projects"></table></div>
+  <div class="flex" style="margin-top:10px">
+    <input id="nsName" placeholder="new work stage, e.g. thermal_analysis">
+    <button id="nsAdd">Add work stage</button>
   </div>
 </div>
 
@@ -99,58 +160,112 @@ label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut)
 </dialog>
 </div><script>
 const $=i=>document.getElementById(i), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const F=s=>{const m=Math.round(s/60);return m>=60?`${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`:`${m}m`};
+const F=s=>{if(s>0&&s<59.5)return `${Math.round(s)}s`;const m=Math.round(s/60);return m>=60?`${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`:`${m}m`};
 const HH=t=>new Date(t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+const ISO=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const SC={work:'var(--work)',idle:'var(--idle)',locked:'var(--locked)',off:'var(--off)'};
-let D=null, day=new Date().toISOString().slice(0,10);
-$('date').value=day;
+const NEW='__new__';
+let D=null;
+$('date').value=ISO(new Date());
 
 function bars(el,obj){const e=$(el);const tot=Math.max(1,...Object.values(obj));
-  e.innerHTML=Object.entries(obj).map(([k,v])=>`<div class="row"><span>${esc(k)}</span>
+  e.innerHTML=Object.entries(obj).map(([k,v])=>`<div class="row"><span title="${esc(k)}">${esc(k)}</span>
   <div class="bar"><i style="width:${v/tot*100}%"></i></div><em>${F(v)}</em></div>`).join('')
   ||'<div class="sub">nothing yet</div>'}
+
+function projOpts(sel,none='(unassigned)'){
+  return `<option value="">${none}</option>`+D.projects.map(p=>
+    `<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.name)}</option>`).join('')+
+    `<option value="${NEW}">+ new project&hellip;</option>`}
+function stageOpts(sel){
+  return D.stages.map(s=>`<option ${s===sel?'selected':''}>${s}</option>`).join('')+
+    `<option value="${NEW}">+ new stage&hellip;</option>`}
+function chips(el,name){$(el).innerHTML=D.projects.map(p=>
+  `<label><input type="checkbox" name="${name}" value="${p.id}">${esc(p.name)}</label>`).join('')
+  ||'<span class="sub">no projects yet</span>'}
+const ticked=name=>[...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i=>i.value);
+
+// "+ new project / stage" inside any dropdown
+document.addEventListener('change',async e=>{
+  const s=e.target; if(s.tagName!=='SELECT'||s.value!==NEW)return;
+  const isStage=s.classList.contains('stagesel')||s.classList.contains('rs');
+  const name=prompt(isStage?'New work stage name':'New project name');
+  if(!name){s.value='';return}
+  const r=isStage?await post('/api/stage',{name}):await post('/api/project/create',{name});
+  await load();
+  s.innerHTML=isStage?stageOpts(r.stage):projOpts(r.id); s.value=isStage?r.stage:r.id;
+});
 
 function drawTimeline(){
   const tl=$('tl'), iv=D.timeline; if(!iv.length){tl.innerHTML='';return}
   const a=iv[0].t0, b=iv[iv.length-1].t1, w=Math.max(1,b-a);
-  tl.innerHTML=iv.map(x=>{const lab=x.state==='work'?`${x.stage||''} ${x.project||''}`:x.state;
-    return `<i title="${HH(x.t0)}-${HH(x.t1)} ${esc(lab)} (${F(x.t1-x.t0)})" style="width:${(x.t1-x.t0)/w*100}%;background:${SC[x.state]||'var(--off)'}"></i>`}).join('');
+  tl.innerHTML=iv.map(x=>{const lab=x.state==='work'?`${x.stage||''} ${x.project||''} ${x.doc||''}`:x.state;
+    const col=x.source==='manual'?'var(--man)':(SC[x.state]||'var(--off)');
+    return `<i title="${HH(x.t0)}-${HH(x.t1)} ${esc(lab)} (${F(x.t1-x.t0)})" style="width:${(x.t1-x.t0)/w*100}%;background:${col}"></i>`}).join('');
   let t='';for(let i=0;i<=6;i++){t+=`<span>${HH(a+(b-a)*i/6)}</span>`}$('ticks').innerHTML=t;
+  const L={work:'work',idle:'idle',locked:'locked',off:'not tracked'};
   $('legend').innerHTML=Object.entries(SC).map(([k,v])=>
-    `<span style="margin-right:14px"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${v};margin-right:5px"></i>${k} ${F(D.states[k]||0)}</span>`).join('');
+    `<span style="margin-right:14px"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${v};margin-right:5px"></i>${L[k]} ${F(D.states[k]||0)}</span>`).join('')+
+    `<span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--man);margin-right:5px"></i>added by hand</span>`;
 }
 
 function drawReview(){
   const rows=D.review||[];
   if(!rows.length){$('review').innerHTML='<tr><td class="muted">Nothing needs review. Every block is labelled with confidence.</td></tr>';return}
-  const stages=D.stages.map(s=>`<option value="${s}">${s}</option>`).join('');
-  const projs=['<option value="">(unassigned)</option>'].concat(
-    D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`)).join('');
   $('review').innerHTML='<tr><th>When</th><th>Length</th><th>What was on screen</th><th>Project</th><th>Stage</th><th></th></tr>'+
     rows.map(r=>`<tr data-id="${r.id}">
       <td>${HH(r.t0)}</td><td><b>${F(r.secs)}</b></td>
       <td>${esc(r.app)}<div class="sub">${esc((r.title||'').slice(0,70))}${r.doc?` &middot; <span class="pill">${esc(r.doc)}</span>`:''}</div></td>
-      <td><select class="rp">${projs}</select></td>
-      <td><select class="rs">${stages}</select></td>
+      <td><select class="rp">${projOpts(r.project_id)}</select></td>
+      <td><select class="rs">${stageOpts(r.stage||'unknown')}</select></td>
       <td><button class="s p ok">Save</button></td></tr>`).join('');
   rows.forEach(r=>{const tr=$('review').querySelector(`tr[data-id="${r.id}"]`);
-    tr.querySelector('.rp').value=r.project_id||''; tr.querySelector('.rs').value=r.stage||'unknown';
     tr.querySelector('.ok').onclick=async()=>{
       await post('/api/label',{ids:[r.id],project_id:tr.querySelector('.rp').value||null,
         stage:tr.querySelector('.rs').value,source:'confirmed'});
-      tr.style.opacity=.4; tr.querySelector('.ok').textContent='saved'; load()}})
+      load()}})
+}
+
+function drawProjDocs(){
+  const pd=D.by_project_doc||{}, ks=Object.keys(pd);
+  $('pdoc').innerHTML=ks.length?'<table>'+ks.map(p=>
+    `<tr><th colspan="2">${esc(p)}</th></tr>`+Object.entries(pd[p]).map(([d,s])=>
+    `<tr><td>${esc(d)}</td><td class="n">${F(s)}</td></tr>`).join('')).join('')+'</table>'
+    :'<div class="sub">No CAD document seen this day.</div>';
+}
+
+function drawManual(){
+  const m=D.manual||[];
+  $('manual').innerHTML=m.map(x=>`<div class="item"><div><b>${HH(x.t0)}&ndash;${HH(x.t1)}</b> (${F(x.t1-x.t0)})
+    &middot; ${esc(x.stage)}${x.project?` &middot; <b>${esc(x.project)}</b>`:''}<div class="sub">${esc(x.text)}</div></div>
+    <button class="x" data-del="${x.id}" title="remove">remove</button></div>`).join('');
+  $('manual').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Remove this hand entry?'))return;
+    await post('/api/manual/delete',{id:+b.dataset.del});load()});
+}
+
+function drawNotes(){
+  $('notes').innerHTML=(D.notes||[]).map(n=>`<div class="item"><div>
+    <span class="sub">${n.day}${n.day_to?' &rarr; '+n.day_to:''}</span>
+    ${n.project?` &middot; <b>${esc(n.project)}</b>`:''}<div>${esc(n.text)}</div></div>
+    <button class="x" data-del="${n.id}">remove</button></div>`).join('');
+  $('notes').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Remove this note?'))return;
+    await post('/api/note/delete',{id:+b.dataset.del});load()});
 }
 
 function drawProjects(){
+  $('npParent').innerHTML='<option value="">(top level)</option>'+D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  $('clientList').innerHTML=(D.clients||[]).map(c=>`<option value="${esc(c.name)}">`).join('');
   $('projects').innerHTML='<tr><th>Project</th><th>Client</th><th>Status</th><th>Groups under</th><th></th></tr>'+
   D.projects.map(p=>`<tr data-id="${p.id}">
     <td><input class="pn" value="${esc(p.name)}" style="width:100%"></td>
-    <td><input class="pc" value="${esc(p.client||'')}" placeholder="client" style="width:100%"></td>
+    <td><input class="pc" value="${esc(p.client||'')}" placeholder="client" list="clientList" style="width:100%"></td>
     <td><select class="ps">${['proposed','active','hold','closed'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></td>
     <td><select class="pp"><option value="">(top level)</option>${
       D.projects.filter(q=>q.id!==p.id).map(q=>`<option value="${q.id}">under ${esc(q.name)}</option>`).join('')}</select></td>
     <td><button class="s ok">Save</button></td></tr>`).join('')
-    ||'<tr><td colspan="5" class="muted">No project seen yet. One appears as soon as a CAD file is open.</td></tr>';
+    ||'<tr><td colspan="5" class="muted">No project yet. Add one above, or open a CAD file and it appears here.</td></tr>';
   D.projects.forEach(p=>{const tr=$('projects').querySelector(`tr[data-id="${p.id}"]`);
     tr.querySelector('.pp').value=p.parent_id||'';
     tr.querySelector('.ok').onclick=async()=>{
@@ -160,53 +275,106 @@ function drawProjects(){
       load()}})
 }
 
-async function post(u,b){const r=await fetch(u,{method:'POST',body:JSON.stringify(b)});return r.json()}
+async function post(u,b){const r=await fetch(u,{method:'POST',body:JSON.stringify(b)});
+  const j=await r.json(); if(!r.ok&&j.error)alert(j.error); return j}
 
 async function tick(){
   let n; try{ n=await (await fetch('/api/now')).json() }catch(e){ return }
   $('beat').className='dot '+(n.live?'beat':'cold');
   const st=n.state==='work'?(n.stage||'working'):(n.state||'-');
   $('lnow').textContent=n.live?st:(n.heartbeat_age==null?'not tracking':'stale '+F(n.heartbeat_age));
-  $('ldoc').textContent=n.doc||(n.app||'\u2014');
-  $('lproj').textContent=n.project||'\u2014';
+  $('ldoc').textContent=n.doc||(n.app||'—');
+  $('lproj').textContent=n.project||'—';
   $('ltot').textContent=F(n.work_today_s||0);
   $('lwhy').textContent=n.live&&n.reason?n.reason+(n.confidence?`  (confidence ${n.confidence})`:''):'';
 }
 
 async function load(){
   D=await (await fetch('/api/day?date='+$('date').value)).json();
+  if(D.error){$('sub').textContent='error: '+D.error;return}
   const st=D.states||{}, pct=D.work_s?Math.round(100*D.confirmed_s/D.work_s):0;
   $('kpis').innerHTML=[
-    ['Worked',F(D.work_s)],['Idle',F(st.idle||0)],['Locked',F(st.locked||0)],
-    ['PC off',F(st.off||0)],['Confirmed by me',pct+'%'],
+    ['Worked',F(D.work_s)],['Idle (away from keys)',F(st.idle||0)],['Locked',F(st.locked||0)],
+    ['Not tracked (PC off / tracker off)',F(st.off||0)],['Confirmed or added by me',pct+'%'],
     ['Stage unknown',F(D.unknown_s)]
   ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
-  drawTimeline(); drawReview(); drawProjects();
-  bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app); bars('doc',D.by_doc);
-  $('noteProj').innerHTML='<option value="">(no project)</option>'+
-    D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
+  bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app);
+  const keepM=$('mProj').value, keepS=$('mStage').value;
+  $('mProj').innerHTML=projOpts(keepM&&keepM!==NEW?keepM:'','(no project)');
+  $('mStage').innerHTML=stageOpts(keepS&&keepS!==NEW?keepS:'study_learning');
+  const nt=ticked('np'), rt=ticked('rp');
+  chips('nProjs','np'); chips('rProjs','rp');
+  nt.forEach(v=>{const i=document.querySelector(`input[name="np"][value="${v}"]`);if(i)i.checked=true});
+  rt.forEach(v=>{const i=document.querySelector(`input[name="rp"][value="${v}"]`);if(i)i.checked=true});
   $('mergeLib').checked=!!D.merge_library;
-  $('notes').innerHTML=(D.notes||[]).map(n=>
-    `<div style="border-top:1px solid var(--line);padding:6px 0">${n.project?`<b>${esc(n.project)}</b> &mdash; `:''}${esc(n.text)}</div>`).join('');
 }
+function setDay(v){$('date').value=v;$('mDate').value=v;$('nFrom').value=v;load()}
 function show(t,x){$('dt').textContent=t;$('dpre').textContent=x;$('dlg').showModal()}
-$('md').onclick=async()=>show('Daily report (markdown)',await (await fetch('/api/markdown?date='+$('date').value)).text());
-$('exp').onclick=async()=>{const r=await (await fetch('/api/export?date='+$('date').value)).json();
-  show('Exported',`Wrote:\n${r.base}.md\n${r.base}.csv\n${r.base}.json`)};
+
+$('md').onclick=async()=>show('Day report',await (await fetch('/api/markdown?date='+$('date').value)).text());
 $('dcopy').onclick=()=>navigator.clipboard?.writeText($('dpre').textContent);
 $('dclose').onclick=()=>$('dlg').close();
+
+$('mAdd').onclick=async()=>{
+  const b={date:$('mDate').value,start:$('mStart').value,end:$('mEnd').value,
+    project_id:$('mProj').value||null,stage:$('mStage').value,text:$('mText').value.trim()};
+  if(!b.date||!b.start||!b.end){alert('Pick a date, a start and an end time');return}
+  const r=await post('/api/manual',b); if(r.ok){$('mText').value='';load()}};
+
 $('noteAdd').onclick=async()=>{const t=$('noteText').value.trim();if(!t)return;
-  await post('/api/note',{day:$('date').value,project_id:$('noteProj').value||null,text:t});
+  await post('/api/note',{day:$('nFrom').value||$('date').value,day_to:$('nTo').value||null,
+    project_ids:ticked('np'),text:t});
   $('noteText').value='';load()};
+
+$('npAdd').onclick=async()=>{const name=$('npName').value.trim(); if(!name)return;
+  await post('/api/project/create',{name,client:$('npClient').value,parent_id:$('npParent').value||null});
+  $('npName').value='';$('npClient').value='';load()};
+$('nsAdd').onclick=async()=>{const name=$('nsName').value.trim(); if(!name)return;
+  await post('/api/stage',{name}); $('nsName').value=''; load()};
+
+function rq(fmt){return `/api/range?from=${$('rFrom').value}&to=${$('rTo').value}&projects=${ticked('rp').join(',')}&fmt=${fmt}`}
+document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{
+  const n=new Date(), y=n.getFullYear(), m=n.getMonth(), wd=(n.getDay()+6)%7; let a,z;
+  if(b.dataset.r==='week'){a=new Date(y,m,n.getDate()-wd);z=n}
+  if(b.dataset.r==='lastweek'){a=new Date(y,m,n.getDate()-wd-7);z=new Date(y,m,n.getDate()-wd-1)}
+  if(b.dataset.r==='month'){a=new Date(y,m,1);z=n}
+  if(b.dataset.r==='lastmonth'){a=new Date(y,m-1,1);z=new Date(y,m,0)}
+  $('rFrom').value=ISO(a);$('rTo').value=ISO(z);$('rView').click()});
+$('rView').onclick=async()=>{
+  const r=await (await fetch(rq('json'))).json(); if(r.error){alert(r.error);return}
+  const ps=r.by_project_stage||{};
+  let h=`<div class="kpis"><div class="k"><span>Total work</span><b>${F(r.work_s)}</b></div>
+    <div class="k"><span>Confirmed / by hand</span><b>${r.work_s?Math.round(100*r.confirmed_s/r.work_s):0}%</b></div>
+    <div class="k"><span>Stage unknown</span><b>${F(r.unknown_s)}</b></div>
+    <div class="k"><span>No project</span><b>${F(r.unassigned_s)}</b></div></div>`;
+  for(const [p,st] of Object.entries(ps).sort((a,b)=>Object.values(b[1]).reduce((x,y)=>x+y,0)-Object.values(a[1]).reduce((x,y)=>x+y,0))){
+    const tot=Object.values(st).reduce((x,y)=>x+y,0);
+    h+=`<h3>${esc(p)} &mdash; ${F(tot)}</h3><table>`+Object.entries(st).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${F(v)}</td></tr>`).join('');
+    const docs=(r.by_project_doc||{})[p]; if(docs)h+=Object.entries(docs).map(([k,v])=>`<tr><td class="muted">&nbsp;&nbsp;${esc(k)}</td><td class="n muted">${F(v)}</td></tr>`).join('');
+    h+='</table>'}
+  if(Object.keys(r.by_day||{}).length)h+='<h3>By day</h3><table>'+Object.entries(r.by_day).map(([k,v])=>`<tr><td>${k}</td><td class="n">${F(v)}</td></tr>`).join('')+'</table>';
+  if((r.notes||[]).length)h+='<h3>Notes</h3>'+r.notes.map(n=>`<div class="item"><div><span class="sub">${n.day}${n.day_to?' &rarr; '+n.day_to:''}</span>${n.project?' &middot; <b>'+esc(n.project)+'</b>':''}<div>${esc(n.text)}</div></div></div>`).join('');
+  $('rOut').innerHTML=h||'<div class="sub">No work in this period.</div>'};
+$('rMd').onclick=()=>location.href=rq('md')+'&download=1';
+$('rCsv').onclick=()=>location.href=rq('csv');
+$('rCsvD').onclick=()=>location.href=rq('csvdetail');
+
 $('mergeLib').onchange=async e=>{
-  await post('/api/setting',{key:'merge_library_stages_in_report',value:e.target.checked});
-  load()};
-$('date').onchange=load;
-$('prev').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()-1);$('date').value=d.toISOString().slice(0,10);load()};
-$('next').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()+1);$('date').value=d.toISOString().slice(0,10);load()};
+  await post('/api/setting',{key:'merge_library_stages_in_report',value:e.target.checked});load()};
+$('date').onchange=()=>setDay($('date').value);
+const shift=k=>{const d=new Date($('date').value+'T12:00');d.setDate(d.getDate()+k);setDay(ISO(d))};
+$('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
+$('today').onclick=()=>setDay(ISO(new Date()));
+{const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
+// unsaved edits in the review or project tables pause the auto refresh
+let dirty=false;
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{
+  if(e.target.closest&&e.target.closest('#review,#projects'))dirty=true}));
+const _load=load; load=async()=>{dirty=false;return _load()};
 load(); tick();
 setInterval(tick,5000);    // live strip: a few hundred bytes
-setInterval(load,60000);   // full day rebuild
+setInterval(()=>{if(!dirty&&!$('dlg').open)load()},60000);   // full day rebuild
 </script></body></html>

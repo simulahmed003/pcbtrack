@@ -120,9 +120,24 @@ having on: it proves editing happened and corroborates the document
    migration. Every insert names its columns now; keep it that way.
 7. **`pkill -f "pcbtrack serve"` kills the shell that runs it**, because the
    pattern matches its own command line. Use a stored PID.
+8. **A row stores sample times, not covered time** (found live, 0.3.0). A
+   block seen on one tick has `t0 == t1` and counted 0 s, so short looks at a
+   schematic vanished from "By document", and every block change leaked one
+   tick to "off". `sessionize.intervals` stretches each row to the next row's
+   start when the gap is <= ~2 ticks. Do the fix at read time, so old data
+   is repaired too.
+9. **Sticky carry-over crossed applications** (found live, 0.3.0): chatting in
+   Claude and browsing Edge after Altium got "routing". Stage carry-over now
+   only applies within the same process.
+10. **The PcbLib editor reuses the PCB editor's form class**, so the class
+    said PCB while the tab said `.PcbLib`. Within one family (sch/pcb) the
+    tab's extension wins.
+11. **Crash recovery must not trim hand entries.** `close_open_intervals`
+    skips `collector='manual'` rows, which may legitimately end after the last
+    heartbeat.
 
 ## Working agreement with the owner
 
 Weekly review. Each week: run `pcbtrack selfcheck`, read `perf.log`, compare
-what the dashboard claims against what he remembers, then tighten rules. The
+what the dashboard claims against what the owner remembers, then tighten rules. The
 acceptance targets are in `01-requirements.md`.

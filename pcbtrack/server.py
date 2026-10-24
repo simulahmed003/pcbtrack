@@ -20,7 +20,7 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", filename=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body, default=str).encode()
         elif isinstance(body, str):
@@ -29,6 +29,8 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if filename:
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
         self.end_headers()
         self.wfile.write(body)
 
@@ -61,6 +63,23 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/markdown":
                 return self._send(200, report.markdown(c, CFG, _day(q)),
                                   "text/plain; charset=utf-8")
+            if u.path == "/api/range":
+                d0 = dt.date.fromisoformat(q["from"][0])
+                d1 = dt.date.fromisoformat((q.get("to") or q["from"])[0])
+                pids = [p for p in (q.get("projects") or [""])[0].split(",") if p]
+                r = report.range_summary(c, CFG, d0, d1, pids)
+                f = (q.get("fmt") or ["json"])[0]
+                stem = "pcbtrack_%s_to_%s" % (r["from"], r["to"])
+                dl = (q.get("download") or ["0"])[0] == "1"
+                if f == "md":
+                    return self._send(200, report.range_markdown(r), "text/markdown; charset=utf-8",
+                                      stem + ".md" if dl else None)
+                if f in ("csv", "csvdetail"):
+                    return self._send(200, report.range_csv(r, f == "csvdetail"),
+                                      "text/csv; charset=utf-8",
+                                      stem + ("_detail" if f == "csvdetail" else "") + ".csv")
+                r.pop("rows", None)
+                return self._send(200, r)
             if u.path == "/api/export":
                 base = report.export(c, CFG, _day(q))
                 return self._send(200, {"ok": True, "base": base})
@@ -97,8 +116,47 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "n": len(ids)})
             if u.path == "/api/note":
                 day = body.get("day") or dt.date.today().isoformat()
-                store.add_note(c, day, body.get("project_id"), body["text"][:2000])
+                store.add_note(c, day, body.get("project_id"), body["text"][:2000],
+                               day_to=body.get("day_to") or None,
+                               project_ids=body.get("project_ids"))
                 return self._send(200, {"ok": True})
+            if u.path == "/api/note/delete":
+                c.execute("DELETE FROM notes WHERE id=?", (int(body["id"]),))
+                c.commit()
+                return self._send(200, {"ok": True})
+            if u.path == "/api/project/create":
+                name = (body.get("name") or "").strip()[:120]
+                if not name:
+                    return self._send(400, {"error": "name required"})
+                pid = store.create_project(c, name, body.get("client"),
+                                           body.get("parent_id") or None)
+                return self._send(200, {"ok": True, "id": pid})
+            if u.path == "/api/stage":
+                import re as _re
+                name = _re.sub(r"[^a-z0-9_]+", "_", (body.get("name") or "").strip().lower()).strip("_")[:40]
+                if not name:
+                    return self._send(400, {"error": "name required"})
+                custom = list(CFG.get("custom_stages") or [])
+                if name not in custom and name not in CFG["stages"]:
+                    custom.append(name)
+                    config.save_user({"custom_stages": custom})
+                    CFG["custom_stages"] = custom
+                    CFG["stages"] = config.all_stages(CFG)
+                return self._send(200, {"ok": True, "stage": name})
+            if u.path == "/api/manual":
+                day = dt.date.fromisoformat(body["date"])
+                a = dt.datetime.combine(day, dt.time.fromisoformat(body["start"]))
+                b = dt.datetime.combine(day, dt.time.fromisoformat(body["end"]))
+                if b <= a:
+                    b += dt.timedelta(days=1)          # past midnight
+                oid = store.add_manual(c, a.timestamp(), b.timestamp(),
+                                       body.get("project_id") or None,
+                                       body.get("stage") or "unknown",
+                                       (body.get("text") or "")[:200])
+                return self._send(200, {"ok": True, "id": oid})
+            if u.path == "/api/manual/delete":
+                ok = store.delete_manual(c, int(body["id"]))
+                return self._send(200 if ok else 404, {"ok": ok})
             if u.path == "/api/project":
                 pid = body["id"]
                 if "name" in body:

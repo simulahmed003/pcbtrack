@@ -28,16 +28,20 @@ DEFAULTS = {
     },
     "project_dirs": [],
     "stages": [
-        "client_meeting", "study_existing", "library_symbol", "library_footprint",
-        "component_search", "schematic", "erc", "eco_sync", "bom",
-        "rules_stackup", "placement", "routing", "drc", "silkscreen",
-        "fab_output", "revision", "firmware", "cam_milling", "messaging",
-        "admin", "unknown",
+        "client_meeting", "study_existing", "study_learning", "library_symbol",
+        "library_footprint", "component_search", "schematic", "erc", "eco_sync",
+        "bom", "rules_stackup", "pcb_layout", "placement", "routing", "drc",
+        "silkscreen", "fab_output", "revision", "firmware", "cam_milling",
+        "assembly_testing", "messaging", "admin", "unknown",
     ],
+    # stages you add from the dashboard; appended to "stages"
+    "custom_stages": [],
     "merge_library_stages_in_report": False,
     "doctype_stage": {
         "SCH": "schematic",
-        "PCB": "routing",
+        # an open PcbDoc says "PCB work", not which part of it: placement vs
+        # routing is the user's call in review
+        "PCB": "pcb_layout",
         "SCHLIB": "library_symbol",
         "PCBLIB": "library_footprint",
         "FAB": "fab_output",
@@ -81,9 +85,18 @@ def load():
         except Exception as e:
             sys.stderr.write("config.json ignored (%s)\n" % e)
     cfg = _merge(DEFAULTS, user)
+    cfg["stages"] = all_stages(cfg)
     cfg["_path"] = path
     cfg["_data_dir"] = data_dir()
     return cfg
+
+
+def all_stages(cfg):
+    out = list(cfg["stages"])
+    for s in cfg.get("custom_stages") or []:
+        if s not in out:
+            out.insert(len(out) - 1 if out and out[-1] == "unknown" else len(out), s)
+    return out
 
 
 def save_user(patch):

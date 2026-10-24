@@ -11,19 +11,23 @@ REVIEW_CONF = 0.6
 
 
 def fmt(secs):
+    if 0 < secs < 59.5:
+        return "%ds" % round(secs)      # a quick look at a sheet is not "0m"
     m = int(round(secs / 60.0))
     return ("%dh %02dm" % (m // 60, m % 60)) if m >= 60 else "%dm" % m
 
 
 def load_day(conn, cfg, day, now=None, backfill=True):
     t0, t1 = sessionize.day_window(day, cfg["day_cutover_hour"])
+    now = now or __import__("time").time()
     if backfill:
         try:
             classify.backfill(conn, cfg, t0, t1)
         except Exception:
             pass
-    iv = sessionize.intervals(conn, t0, t1)
-    iv = sessionize.with_off(iv, t0, t1, now=now or __import__("time").time())
+    iv = sessionize.intervals(conn, t0, max(t0, min(t1, now)),
+                              join_gap=cfg["tick_seconds"] * 2 + 1)
+    iv = sessionize.with_off(iv, t0, t1, now=now)
     iv = sessionize.apply_grace(iv, cfg["thinking_grace_seconds"])
     return iv, t0, t1
 
@@ -81,9 +85,13 @@ def summary(conn, cfg, day, now=None):
     total_work = sum(x["secs"] for x in work)
     unknown = sum(x["secs"] for x in work if x["stage"] == "unknown")
     unassigned = sum(x["secs"] for x in work if not x["project_id"])
-    notes = conn.execute(
-        "SELECT project_id,text,created FROM notes WHERE day=? ORDER BY created",
-        (day.isoformat(),)).fetchall()
+    notes = store.notes_between(conn, day.isoformat(), day.isoformat())
+    by_pd = {}
+    for x in work:
+        if x["doc"]:
+            p = names.get(proj_of(x), "(unassigned)")
+            by_pd.setdefault(p, {})
+            by_pd[p][x["doc"]] = by_pd[p].get(x["doc"], 0.0) + x["secs"]
     return {
         "day": day.isoformat(),
         "states": by_state,
@@ -96,7 +104,10 @@ def summary(conn, cfg, day, now=None):
                        sessionize.rollup(work, proj_of).items()},
         "by_app": sessionize.rollup(work, lambda x: x["app"] or "(none)"),
         "by_doc": sessionize.rollup(work, lambda x: x["doc"]),
-        "notes": [{"project": names.get(n["project_id"], ""), "text": n["text"]} for n in notes],
+        "by_project_doc": {p: dict(sorted(d.items(), key=lambda kv: -kv[1]))
+                           for p, d in by_pd.items()},
+        "notes": notes,
+        "manual": store.manual_between(conn, t0, t1),
         "timeline": [{"t0": x["t0"], "t1": x["t1"], "state": x["state"],
                       "stage": x["stage"], "project": names.get(x["project_id"], ""),
                       "doc": x["doc"], "app": x["app"],
@@ -159,8 +170,169 @@ def markdown(conn, cfg, day, now=None):
         A("## What I actually did")
         A("")
         for n in s["notes"]:
-            A("- %s%s" % (("**%s** - " % n["project"]) if n["project"] else "", n["text"]))
+            period = (" (%s to %s)" % (n["day"], n["day_to"])) if n["day_to"] else ""
+            A("- %s%s%s" % (("**%s** - " % n["project"]) if n["project"] else "",
+                            n["text"], period))
     return "\n".join(L) + "\n"
+
+
+def _add(d, k, v):
+    d[k] = d.get(k, 0.0) + v
+
+
+def _sorted(d):
+    return dict(sorted(d.items(), key=lambda kv: -kv[1]))
+
+
+def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
+    """Totals for an inclusive date range, optionally for chosen projects only.
+    A chosen parent project also takes its sub-projects."""
+    if d1 < d0:
+        d0, d1 = d1, d0
+    names = store.project_names(conn)
+    parents = store.project_parents(conn) if cfg.get(
+        "roll_up_subprojects_in_report", True) else {}
+    want = set(project_ids or [])
+    merge = cfg.get("merge_library_stages_in_report")
+    allp = store.project_parents(conn)
+
+    def keep(pid):
+        if not want:
+            return True
+        return pid in want or store.roll_up(pid, allp) in want
+
+    def proj(x):
+        pid = store.roll_up(x["project_id"], parents) if parents else x["project_id"]
+        return names.get(pid, "(unassigned)")
+
+    def stage(x):
+        s = x["stage"]
+        if merge and s in ("library_symbol", "library_footprint", "component_search"):
+            return "library_management"
+        return s
+
+    agg = {k: {} for k in ("project", "stage", "doc", "app", "day")}
+    ps, pd = {}, {}
+    rows = []
+    tot = conf = unknown = unassigned = 0.0
+    day = d0
+    while day <= d1:
+        iv, _, _ = load_day(conn, cfg, day, now)
+        for x in iv:
+            if x["state"] != "work" or not keep(x["project_id"]):
+                continue
+            s = x["secs"]
+            tot += s
+            if x["source"] in ("confirmed", "manual", "corrected"):
+                conf += s
+            if x["stage"] == "unknown":
+                unknown += s
+            if not x["project_id"]:
+                unassigned += s
+            p, st = proj(x), stage(x)
+            _add(agg["project"], p, s)
+            _add(agg["stage"], st, s)
+            _add(agg["app"], x["app"] or "(none)", s)
+            _add(agg["day"], day.isoformat(), s)
+            if x["doc"]:
+                _add(agg["doc"], x["doc"], s)
+                _add(pd.setdefault(p, {}), x["doc"], s)
+            _add(ps.setdefault(p, {}), st, s)
+            rows.append({"day": day.isoformat(), "t0": x["t0"], "t1": x["t1"],
+                         "project": p, "stage": st, "doc": x["doc"] or "",
+                         "app": x["app"] or "", "source": x["source"],
+                         "text": x["title"] if x["app"] == "manual" else ""})
+        day += dt.timedelta(days=1)
+
+    notes = [n for n in store.notes_between(conn, d0.isoformat(), d1.isoformat())
+             if not want or not n["project_ids"] or set(n["project_ids"]) & want]
+    return {
+        "from": d0.isoformat(), "to": d1.isoformat(),
+        "projects_filter": [names.get(p, p) for p in want],
+        "work_s": tot, "confirmed_s": conf, "unknown_s": unknown,
+        "unassigned_s": unassigned,
+        "by_project": _sorted(agg["project"]), "by_stage": _sorted(agg["stage"]),
+        "by_doc": _sorted(agg["doc"]), "by_app": _sorted(agg["app"]),
+        "by_day": dict(sorted(agg["day"].items())),
+        "by_project_stage": {p: _sorted(v) for p, v in ps.items()},
+        "by_project_doc": {p: _sorted(v) for p, v in pd.items()},
+        "notes": notes, "rows": rows,
+    }
+
+
+def range_markdown(r):
+    L = []
+    A = L.append
+    A("# Work report %s to %s" % (r["from"], r["to"]))
+    if r["projects_filter"]:
+        A("")
+        A("Projects: %s" % ", ".join(r["projects_filter"]))
+    pct = (100.0 * r["confirmed_s"] / r["work_s"]) if r["work_s"] else 0
+    A("")
+    A("Total work: **%s**. Confirmed or entered by me: %s (%.0f%%). "
+      "Stage unknown: %s. Not assigned to a project: %s." % (
+          fmt(r["work_s"]), fmt(r["confirmed_s"]), pct,
+          fmt(r["unknown_s"]), fmt(r["unassigned_s"])))
+    for p, stages in sorted(r["by_project_stage"].items(),
+                            key=lambda kv: -sum(kv[1].values())):
+        A("")
+        A("## %s - %s" % (p, fmt(sum(stages.values()))))
+        A("")
+        A("| Work stage | Time |")
+        A("| --- | --- |")
+        for k, v in stages.items():
+            A("| %s | %s |" % (k, fmt(v)))
+        docs = r["by_project_doc"].get(p)
+        if docs:
+            A("")
+            A("| Document | Time |")
+            A("| --- | --- |")
+            for k, v in docs.items():
+                A("| %s | %s |" % (k, fmt(v)))
+    for title, d in (("By day", r["by_day"]), ("By software", r["by_app"])):
+        if d:
+            A("")
+            A("## %s" % title)
+            A("")
+            A("| %s | Time |" % title[3:].capitalize())
+            A("| --- | --- |")
+            for k, v in d.items():
+                A("| %s | %s |" % (k, fmt(v)))
+    if r["notes"]:
+        A("")
+        A("## What I actually did")
+        A("")
+        for n in r["notes"]:
+            when = n["day"] + ((" to " + n["day_to"]) if n["day_to"] else "")
+            A("- %s%s: %s" % (when, (" (%s)" % n["project"]) if n["project"] else "",
+                              n["text"]))
+    return "\n".join(L) + "\n"
+
+
+def range_csv(r, detail=False):
+    import io
+    f = io.StringIO()
+    w = csv.writer(f)
+    if detail:
+        w.writerow(["date", "start", "end", "minutes", "project", "stage",
+                    "document", "software", "label_source", "note"])
+        for x in r["rows"]:
+            w.writerow([x["day"],
+                        dt.datetime.fromtimestamp(x["t0"]).strftime("%H:%M:%S"),
+                        dt.datetime.fromtimestamp(x["t1"]).strftime("%H:%M:%S"),
+                        round((x["t1"] - x["t0"]) / 60.0, 2), x["project"],
+                        x["stage"], x["doc"], x["app"], x["source"], x["text"]])
+    else:
+        w.writerow(["project", "stage", "hours", "minutes"])
+        for p, stages in r["by_project_stage"].items():
+            for k, v in stages.items():
+                w.writerow([p, k, round(v / 3600.0, 2), round(v / 60.0, 1)])
+        w.writerow([])
+        w.writerow(["project", "document", "hours", "minutes"])
+        for p, docs in r["by_project_doc"].items():
+            for k, v in docs.items():
+                w.writerow([p, k, round(v / 3600.0, 2), round(v / 60.0, 1)])
+    return "﻿" + f.getvalue()
 
 
 def export(conn, cfg, day, outdir=None, now=None):

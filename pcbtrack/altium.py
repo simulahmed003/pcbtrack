@@ -32,6 +32,8 @@ EDITOR_CLASSES = {
     "TPCBLibView_GraphicalForm": "PCBLIB",       # not yet seen; verify
 }
 
+FAMILY = {"SCH": "sch", "SCHLIB": "sch", "PCB": "pcb", "PCBLIB": "pcb"}
+
 # Never read these as the active document: the doc bar lists OTHER open files.
 IGNORE_CLASSES = ("TGUIDocBarButton", "TXPDocBarPopupPanel", "TCaptionSearchEdit")
 
@@ -94,6 +96,10 @@ def pick_active(children):
     tab = vis_tab or invis_tab
     if tab:
         doc, dt = tab
+        # Same editor family (PcbLib shown in a PCB-class form, seen live on
+        # 2026-10-24): the tab's extension is the more specific answer.
+        if editor and FAMILY.get(editor) == FAMILY.get(dt):
+            return doc, dt, "document tab"
         if editor and editor != dt:
             # The editor form is the more direct evidence of which editor is
             # on screen; keep the document name but trust the editor's type.

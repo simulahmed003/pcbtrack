@@ -103,6 +103,12 @@ def win_probe(altium_procs=("x2.exe", "dxp.exe")):
             try:
                 from .altium import read_active_document
                 doc, doctype, docsrc = read_active_document(hwnd)
+                if not doctype:
+                    # A dialog is in front: ask its owner, the main window.
+                    u32.GetAncestor.restype = wintypes.HWND
+                    owner = u32.GetAncestor(hwnd, 3)      # GA_ROOTOWNER
+                    if owner and owner != hwnd:
+                        doc, doctype, docsrc = read_active_document(owner)
             except Exception:
                 pass
         return Sample(time.time(), app, title, wclass, idle, locked(),

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.0 - 2026-10-24
+From the first live day on the owner's PC.
+
+Added
+- Create projects (with client and parent) before any file is seen, from the
+  Projects card or "+ new project" in any dropdown.
+- Custom work stages ("+ new stage"), plus built-in `study_learning`,
+  `pcb_layout` and `assembly_testing`.
+- Add time by hand for any date and time range (study, meetings, milling,
+  soldering, or correcting a wrong stretch). Hand entries replace tracked time
+  for the same minutes and can be removed.
+- Notes can cover a date range and several projects.
+- Report for a period: from/to dates, presets (this/last week, month),
+  project filter; download Markdown, a summary CSV (project x stage, project
+  x document) or every block as CSV.
+- "Files by project" card; durations under a minute are shown in seconds.
+
+Fixed
+- One-tick blocks counted 0 s and each block change leaked a tick to "off";
+  short document visits never appeared. Fixed at read time, old data included.
+- Stage carry-over leaked from Altium into Claude/Edge time.
+- A `.PcbLib` shown in the PCB-class editor was labelled routing.
+- An open PcbDoc is now `pcb_layout`, not `routing`: placement vs routing is
+  confirmed in review.
+- Dashboard default date used UTC and showed the wrong day after midnight.
+- The minute refresh no longer wipes unsaved review/project edits.
+- Untitled Altium dialogs read the active document from their owner window.
+
 ## 0.1.0 - 2026-10-24
 First working version. Built after a two-day baseline with a title-only
 tracker showed 70% of working time was unclassifiable.

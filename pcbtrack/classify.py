@@ -165,10 +165,13 @@ class Classifier:
                     if rx.search(hay):
                         out.update(stage=stg, confidence=conf, reason="app rule")
                         break
-            # 7. sticky carry-over
+            # 7. sticky carry-over - only inside the SAME application (an
+            #    untitled Altium dialog keeps Altium's stage). A browser or a
+            #    chat window never inherits "routing": that labelled 7 minutes
+            #    of chatting as PCB work on 2026-10-24.
             if not out["stage"] and self.sticky:
-                sp, ss, stt = self.sticky
-                if t - stt <= self.cfg["sticky_minutes"] * 60:
+                sp, ss, stt, sapp = self.sticky
+                if t - stt <= self.cfg["sticky_minutes"] * 60 and sapp == appl:
                     out.update(stage=ss, confidence=0.35,
                                reason="carried from previous activity")
                     pid = pid or sp
@@ -183,7 +186,7 @@ class Classifier:
                 out["project_id"] = self.sticky[0]
                 out["reason"] += " +carried project"
         if out["project_id"] and out["stage"] not in ("unknown", None):
-            self.sticky = (out["project_id"], out["stage"], t)
+            self.sticky = (out["project_id"], out["stage"], t, appl)
         return out
 
 
