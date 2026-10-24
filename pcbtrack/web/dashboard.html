@@ -49,6 +49,7 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
 .lane i{display:block;height:100%}
 .alt td{font-size:13px}.alt .st{display:inline-block;font-size:11px;border-radius:999px;padding:0 7px;margin:1px 3px 1px 0;color:#fff}
 .big{font-size:26px;font-weight:600}
+details.card summary{cursor:pointer;list-style:revert}
 .item{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
 </style></head><body><div class="wrap">
 <header>
@@ -85,8 +86,16 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
     <div><div class="sub">document switches</div><div class="big" id="aSw">0</div></div>
     <div style="flex:1 1 260px"><div class="sub">by work stage</div><div id="aStage"></div></div>
   </div>
+  <div class="sub" style="margin:4px 0 6px"><b>Detected</b> is what was on screen (a fact). <b>Work stage</b> is the tracker's guess
+  <span class="pill gp">amber</span> until you pick one; picking relabels that whole row.</div>
   <div class="tw"><table class="alt" id="aDocs"></table></div>
 </div>
+
+<details class="card" id="otherCard"><summary><h2 style="display:inline">Other software</h2>
+  <span class="sub" id="oTot"></span></summary>
+  <div class="sub" style="margin:8px 0 6px">Pages and windows outside Altium, same columns. Lower priority: fix them when it matters.</div>
+  <div class="tw"><table class="alt" id="oRows"></table></div>
+</details>
 
 <div class="card"><h2>The whole day, 24 hours</h2>
   <div class="tl" id="tl"></div>
@@ -162,8 +171,18 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
     <button id="rMd">Download report (.md)</button>
     <button id="rCsv">Download summary (.csv)</button>
     <button id="rCsvD">Download every block (.csv)</button>
+    <button id="rBrief">Copy AI brief</button>
   </div>
   <div id="rOut" style="margin-top:10px"></div>
+</div>
+
+<div class="card"><h2>Settings</h2>
+  <div class="grid">
+    <label>Daily target (hours)<input type="number" id="sTarget" min="0" max="24" step="0.5"></label>
+  </div>
+  <div class="lab" style="margin-top:10px">Project folders, one per line &mdash; used to count file saves per document (optional)</div>
+  <textarea id="sDirs" placeholder="D:\Altium\ESC_Board_5Vbuck"></textarea>
+  <div class="flex" style="margin-top:8px"><button class="p" id="sSave">Save settings</button><span class="sub" id="sMsg"></span></div>
 </div>
 
 <div class="card"><h2>Projects &amp; clients</h2>
@@ -227,6 +246,22 @@ const SCOL={schematic:'#2563eb',library_symbol:'#7c3aed',library_footprint:'#c02
   component_search:'#db2777',pcb_layout:'#0f766e',placement:'#059669',routing:'#0d9488',drc:'#ea580c',
   erc:'#f97316',eco_sync:'#ca8a04',bom:'#65a30d',fab_output:'#4b5563',unknown:'#94a3b8'};
 const stageCol=s=>SCOL[s]||'#64748b';
+function rowsTable(rows,saves,empty){
+  if(!rows.length)return `<tr><td class="muted">${empty}</td></tr>`;
+  let h=`<tr><th>Project / ${saves?'document':'page or window'}</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
+  rows.forEach((r,i)=>{
+    if(r.project!==last){const pt=rows.filter(x=>x.project===r.project).reduce((x,y)=>x+y.secs,0);
+      h+=`<tr><td colspan="${saves?4:3}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
+    h+=`<tr class="${r.confirmed?'':'guess'}"><td>&nbsp;&nbsp;${esc(r.item)}</td><td class="muted">${esc(r.detected)}</td>
+      <td><select class="rs rowstage" data-i="${i}">${stageOpts(r.stage)}</select>${r.confirmed?'':' <span class="pill gp">guess</span>'}</td>
+      ${saves?`<td class="n">${r.saves||''}</td>`:''}<td class="n">${F(r.secs)}</td></tr>`});
+  return h}
+function bindRows(tbl,rows){
+  tbl.querySelectorAll('.rowstage').forEach(sel=>sel.onchange=async()=>{
+    if(sel.value===NEW)return;           // handled by the "+ new stage" listener
+    const r=rows[+sel.dataset.i];
+    await post('/api/label',{ids:r.ids,stage:sel.value,source:'confirmed'}); load()})}
+
 function drawAltium(){
   const a=D.cad||{work_s:0,docs:{},by_stage:{}};
   $('aTot').textContent=F(a.work_s); $('aSw').textContent=a.switches||0;
@@ -234,13 +269,11 @@ function drawAltium(){
   $('aStage').innerHTML=Object.entries(a.by_stage).map(([k,v])=>
     `<span class="st" style="background:${stageCol(k)}">${esc(k)} ${F(v)}</span>`).join('')||'<span class="sub">no Altium time yet</span>';
   $('aStage').querySelectorAll('.st').forEach(e=>e.style.cssText+=';display:inline-block;font-size:11px;border-radius:999px;padding:1px 8px;margin:2px 4px 2px 0;color:#fff');
-  const ps=Object.entries(a.docs||{});
-  $('aDocs').innerHTML=ps.length?'<tr><th>Project / document</th><th>Work stage</th><th style="text-align:right">Time</th></tr>'+
-    ps.map(([p,docs])=>{const pt=Object.values(docs).reduce((x,y)=>x+y.secs,0);
-      return `<tr><td colspan="2"><b>${esc(p)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`+
-      Object.entries(docs).map(([d,v])=>`<tr><td>&nbsp;&nbsp;${esc(d)}</td><td>${Object.entries(v.stages).map(([k,sv])=>
-        `<span class="st" style="background:${stageCol(k)}">${esc(k)}</span>`).join('')}</td><td class="n">${F(v.secs)}</td></tr>`).join('')}).join('')
-    :'<tr><td class="muted">No Altium activity on this day yet. Open Altium and it appears here within 5 seconds.</td></tr>';
+  $('aDocs').innerHTML=rowsTable(a.rows||[],true,'No Altium activity on this day yet. Open Altium and it appears here within 5 seconds.');
+  bindRows($('aDocs'),a.rows||[]);
+  const o=D.other_rows||[]; $('oTot').textContent=' · '+F(o.reduce((x,r)=>x+r.secs,0))+' in '+o.length+' item(s)';
+  $('oRows').innerHTML=rowsTable(o,false,'Nothing outside Altium on this day.');
+  bindRows($('oRows'),o);
 }
 
 function drawTimeline(){
@@ -352,8 +385,14 @@ async function load(){
   $('kpis').innerHTML=[
     ['Worked',F(D.work_s)],['Idle (away from keys)',F(st.idle||0)],['Locked',F(st.locked||0)],
     ['Not tracked (PC off / tracker off)',F(st.off||0)],['Confirmed or added by me',pct+'%'],
-    ['Stage unknown',F(D.unknown_s)],['Project guessed (check)',F(D.guessed_s||0)]
-  ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('');
+    ['Stage unknown',F(D.unknown_s)],['Project guessed (check)',F(D.guessed_s||0)],
+    ['This week (from '+((D.week||{}).from||'').slice(5)+')',F((D.week||{}).work_s||0)],['Altium this week',F((D.week||{}).cad_s||0)],
+    ['Altium focus (share of work)',((D.cad||{}).focus_pct||0)+'%'],['Longest Altium stretch',F((D.cad||{}).longest_s||0)]
+  ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('')+
+  `<div class="k" style="grid-column:1/-1"><span>Daily target ${F(D.target_s||0)} &middot; ${D.target_s?Math.min(100,Math.round(100*D.work_s/D.target_s)):0}% done</span>
+   <div class="bar" style="margin-top:6px;height:10px"><i style="width:${D.target_s?Math.min(100,100*D.work_s/D.target_s):0}%"></i></div></div>`;
+  if(document.activeElement!==$('sTarget'))$('sTarget').value=(D.target_s||0)/3600;
+  if(document.activeElement!==$('sDirs'))$('sDirs').value=(D.project_dirs||[]).join('\n');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
   drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
@@ -426,6 +465,12 @@ $('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
 $('today').onclick=()=>setDay(ISO(new Date()));
 {const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
 $('cadOnly').onchange=()=>drawReview();
+$('sSave').onclick=async()=>{
+  const a=await post('/api/setting',{key:'daily_target_hours',value:+$('sTarget').value||0});
+  const b=await post('/api/setting',{key:'project_dirs',value:$('sDirs').value.split(/\r?\n/)});
+  $('sMsg').textContent=(a.ok&&b.ok)?'saved':'';load()};
+$('rBrief').onclick=async()=>{const t=await (await fetch(rq('brief'))).text();
+  try{await navigator.clipboard.writeText(t);show('AI brief copied - paste it into any assistant',t)}catch(e){show('AI brief',t)}};
 $('acceptAll').onclick=async()=>{
   const trs=[...$('review').querySelectorAll('tr[data-id]')]; if(!trs.length)return;
   if(!confirm(`Confirm all ${trs.length} blocks with the project and stage shown?`))return;

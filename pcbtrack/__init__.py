@@ -1,3 +1,3 @@
 """pcbtrack - lightweight local work-hour tracker for PCB/EDA designers."""
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 SCHEMA_VERSION = 1

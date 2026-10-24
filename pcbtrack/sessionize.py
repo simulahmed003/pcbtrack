@@ -21,6 +21,7 @@ def _row(r, a, b):
         "project_id": r["project_id"], "stage": r["stage"], "doc": r["doc"],
         "confidence": r["confidence"] or 0.0, "source": r["source"] or "auto",
         "guess": r["project_guess"] or 0,
+        "reason": r["reason"] if "reason" in r.keys() else "",
     }
 
 
@@ -42,7 +43,7 @@ def intervals(conn, t0, t1, join_gap=11.0):
     studying" replaces whatever the tracker guessed for those minutes."""
     rows = conn.execute(
         "SELECT o.id,o.t0,o.t1,o.state,o.app,o.title,o.wclass,o.collector,"
-        "       l.project_id,l.stage,l.doc,l.confidence,l.source,"
+        "       l.project_id,l.stage,l.doc,l.confidence,l.source,l.reason,"
         "       COALESCE(l.project_guess,0) project_guess"
         "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"
         " WHERE o.t1>=? AND o.t0<? ORDER BY o.t0, o.id",

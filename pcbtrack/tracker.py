@@ -86,6 +86,9 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                 # ---- file evidence (cheap scandir, every scan_seconds) ----
                 if t - last_scan >= cfg["scan_seconds"]:
                     try:
+                        if live:
+                            # project folders can be changed from the dashboard
+                            cfg["project_dirs"] = config.load().get("project_dirs", [])
                         signals.collect(cfg, conn, scan_since)
                         scan_since = t - 5
                         store.meta_set(conn, "scan_since", scan_since)

@@ -279,6 +279,37 @@ def main():
           list(sm6["by_project"]) == ["ESC_Board_5Vbuck"], str(sm6["by_project"]))
     check("Altium card has per-document time",
           sm6["cad"]["docs"].get("ESC_Board_5Vbuck", {}).get("ESC_Board.PcbDoc", {}).get("secs", 0) >= 230)
+    # detected vs work stage, relabel by row, saves, focus, week
+    c6.execute("INSERT INTO evidence(t,kind,doc,doctype,path) VALUES(?,?,?,?,?)",
+               (start + 100, "save", "ESC_Board", "PCB", "/p/ESC_Board.PcbDoc"))
+    c6.execute("INSERT INTO evidence(t,kind,doc,doctype,path) VALUES(?,?,?,?,?)",
+               (start + 200, "save", "ESC_Board", "PCB", "/p/ESC_Board.PcbDoc"))
+    c6.commit()
+    sm7 = _rp.summary(c6, cfg6, day, now=start + 700)
+    rows = sm7["cad"]["rows"]
+    pcb = [r for r in rows if r["item"] == "ESC_Board.PcbDoc"][0]
+    print("   altium rows:", [(r["item"], r["detected"], r["stage"], r.get("saves")) for r in rows])
+    check("Detected column is the editor, stage is separate",
+          pcb["detected"] == "PCB editor" and pcb["stage"] == "pcb_layout" and not pcb["confirmed"])
+    check("saves counted per document", pcb["saves"] == 2, str(pcb.get("saves")))
+    for oid in pcb["ids"]:
+        pj, dc = c6.execute("SELECT project_id,doc FROM labels WHERE obs_id=?", (oid,)).fetchone()
+        store.put_label(c6, oid, pj, "routing", dc, 1.0, "confirmed", "user")
+    c6.commit()
+    sm8 = _rp.summary(c6, cfg6, day, now=start + 700)
+    pr = [r for r in sm8["cad"]["rows"] if r["item"] == "ESC_Board.PcbDoc"]
+    check("relabelling a row moves all its time", len(pr) == 1 and pr[0]["stage"] == "routing"
+          and pr[0]["confirmed"] and pr[0]["detected"] == "PCB editor", str(pr))
+    check("focus stats present", sm8["cad"]["focus_pct"] == 100 and sm8["cad"]["longest_s"] >= 230,
+          "%s%% %.0fs" % (sm8["cad"]["focus_pct"], sm8["cad"]["longest_s"]))
+    check("week totals include today", sm8["week"]["cad_s"] >= sm8["cad"]["work_s"] - 1)
+    rr6 = _rp.range_summary(c6, cfg6, day, day, now=start + 700)
+    check("AI brief has prompt and report",
+          (_rp.AI_PROMPT + _rp.range_markdown(rr6)).count("routing") >= 1)
+    from pcbtrack.report import clean_title
+    check("browser title cleaned",
+          clean_title("ESE 4025 Study Pack and 4 more pages - Personal - Microsoft​ Edge")
+          == "ESE 4025 Study Pack")
     c6.close()
 
     print("\n%d check(s) failed" % len(FAILS))

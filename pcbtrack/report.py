@@ -4,7 +4,7 @@ Every report separates CONFIRMED from AUTO-GUESSED time. A report that hides
 that distinction would be dishonest, and this project exists because the
 first version of it was.
 """
-import os, csv, json, datetime as dt
+import os, re, csv, json, datetime as dt
 from . import sessionize, store, config, classify
 
 REVIEW_CONF = 0.6
@@ -78,6 +78,112 @@ def now_snapshot(conn, cfg):
     }
 
 
+EDITOR = {"SCH": "Schematic editor", "PCB": "PCB editor",
+          "SCHLIB": "Schematic library", "PCBLIB": "PCB library", "FAB": "Output job"}
+_EXT = {"schdoc": "SCH", "pcbdoc": "PCB", "schlib": "SCHLIB", "pcblib": "PCBLIB",
+        "intlib": "SCHLIB", "outjob": "FAB", "kicad_sch": "SCH", "kicad_pcb": "PCB",
+        "kicad_sym": "SCHLIB", "kicad_mod": "PCBLIB"}
+_BROWSER_TAIL = re.compile(
+    r"(\s+and \d+ more pages?)?(\s+-\s+(Personal|Work|Profile \d+))?"
+    r"\s+-\s+(Microsoft\W*Edge|Google Chrome|Mozilla Firefox|Brave|Opera)\s*$", re.I)
+
+
+def doctype_of(doc):
+    ext = (doc or "").rsplit(".", 1)[-1].lower() if doc and "." in doc else ""
+    return _EXT.get(ext)
+
+
+def detected_of(x, cadset):
+    """What was observably on screen - a fact, never edited by the user."""
+    app = (x["app"] or "")
+    if app == "manual":
+        return "Added by hand"
+    if app.upper() in cadset:
+        reason = x.get("reason") or ""
+        if reason.startswith("dialog") and x["title"]:
+            return "Dialog: " + x["title"].strip()[:40]
+        dt = doctype_of(x["doc"])
+        return EDITOR.get(dt, "Altium (no document)" if not x["doc"] else "Altium")
+    return re.sub(r"(?i)\.exe$", "", app) or "(unknown)"
+
+
+def clean_title(title):
+    t = (title or "").replace("​", "").strip()
+    t = _BROWSER_TAIL.sub("", t)
+    return t[:70] or "(no title)"
+
+
+def detail_rows(xs, cadset, names, proj_of, stage_of, saves=None):
+    """Rows of (project, item, detected, stage) with time and block ids, so
+    one dropdown can relabel a whole row."""
+    rows = {}
+    for x in xs:
+        cad = (x["app"] or "").upper() in cadset
+        item = (x["doc"] or "(no document)") if cad else (
+            x["title"] if x["app"] == "manual" else clean_title(x["title"]))
+        key = (names.get(proj_of(x), "(unassigned)"), item, detected_of(x, cadset), stage_of(x))
+        r = rows.setdefault(key, {"project": key[0], "item": key[1], "detected": key[2],
+                                  "stage": key[3], "secs": 0.0, "ids": [],
+                                  "confirmed": True, "app": x["app"]})
+        r["secs"] += x["secs"]
+        if x["id"] is not None and x["id"] not in r["ids"]:
+            r["ids"].append(x["id"])
+        if x["source"] not in ("confirmed", "manual", "corrected"):
+            r["confirmed"] = False
+    out = sorted(rows.values(), key=lambda r: (r["project"] == "(unassigned)", r["project"], -r["secs"]))
+    if saves is not None:
+        for r in out:
+            r["saves"] = saves.get((r["item"].rsplit(".", 1)[0].lower(),
+                                    doctype_of(r["item"])), 0)
+    return out
+
+
+def saves_by_doc(conn, t0, t1):
+    """Distinct save times per (document stem, doctype) from project folders
+    and Altium History; proof of progress, not just an open window."""
+    out = {}
+    for r in conn.execute(
+            "SELECT doc,doctype,COUNT(DISTINCT CAST(t AS INTEGER)) n FROM evidence"
+            " WHERE kind IN ('save','history') AND t>=? AND t<? GROUP BY doc,doctype",
+            (t0, t1)):
+        out[((r["doc"] or "").lower(), r["doctype"])] = r["n"]
+    return out
+
+
+def focus_stats(work, cadset, max_gap=120):
+    """Altium focus: share of work time in the design tool, and the longest
+    stretch of it where any break was shorter than max_gap seconds."""
+    cad = [x for x in work if (x["app"] or "").upper() in cadset]
+    best = cur = 0.0
+    last_end = None
+    for x in cad:
+        if last_end is not None and x["t0"] - last_end <= max_gap:
+            cur += x["secs"] + max(0.0, x["t0"] - last_end)
+        else:
+            cur = x["secs"]
+        best = max(best, cur)
+        last_end = x["t1"]
+    tot = sum(x["secs"] for x in work)
+    return {"focus_pct": round(100.0 * sum(x["secs"] for x in cad) / tot) if tot else 0,
+            "longest_s": best}
+
+
+def week_totals(conn, cfg, day, now=None):
+    cadset = {a.upper() for a in cfg.get("cad_processes", [])}
+    start = day - dt.timedelta(days=day.weekday())
+    work = cad = 0.0
+    d = start
+    while d <= day:
+        iv, _, _ = load_day(conn, cfg, d, now, backfill=(d == day))
+        for x in iv:
+            if x["state"] == "work":
+                work += x["secs"]
+                if (x["app"] or "").upper() in cadset:
+                    cad += x["secs"]
+        d += dt.timedelta(days=1)
+    return {"from": start.isoformat(), "work_s": work, "cad_s": cad}
+
+
 def summary(conn, cfg, day, now=None):
     iv, t0, t1 = load_day(conn, cfg, day, now)
     names = store.project_names(conn)
@@ -132,7 +238,15 @@ def summary(conn, cfg, day, now=None):
                 "by_project": {names.get(k, "(unassigned)"): v for k, v in
                                sessionize.rollup(cadw, proj_of).items()},
                 "docs": cad_docs,
-                "switches": sum(1 for a, b in zip(cadw, cadw[1:]) if a["doc"] != b["doc"])},
+                "rows": detail_rows(cadw, cadset, names, proj_of, stage_of,
+                                    saves_by_doc(conn, t0, t1)),
+                "switches": sum(1 for a, b in zip(cadw, cadw[1:]) if a["doc"] != b["doc"]),
+                **focus_stats(work, cadset)},
+        "other_rows": detail_rows([x for x in work if (x["app"] or "").upper() not in cadset],
+                                  cadset, names, proj_of, stage_of),
+        "week": week_totals(conn, cfg, day, now),
+        "target_s": float(cfg.get("daily_target_hours", 5)) * 3600,
+        "project_dirs": cfg.get("project_dirs", []),
         "by_stage": sessionize.rollup(work, stage_of),
         "by_project": {names.get(k, "(unassigned)"): v for k, v in
                        sessionize.rollup(work, proj_of).items()},
@@ -312,6 +426,15 @@ def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
         "by_project_doc": {p: _sorted(v) for p, v in pd.items()},
         "notes": notes, "rows": rows,
     }
+
+
+AI_PROMPT = (
+    "Below is a local work-time report from pcbtrack for a PCB designer. Times "
+    "marked confirmed were checked by the designer; the rest are automatic "
+    "guesses. Please (1) summarise where the time went per project and work "
+    "stage, (2) point out patterns that cost time (fragmented sessions, long "
+    "library or component-search time, rework), and (3) suggest three concrete "
+    "changes for next week. Be brief.\n\n")
 
 
 def range_markdown(r):

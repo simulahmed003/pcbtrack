@@ -37,3 +37,11 @@ decisions for the owner.
 - **Datasheets on a phone or on paper** cannot be seen at all. Use `log`.
 - **Browser URLs** are not read, only tab titles. Deliberate: reading the
   address bar needs UIA on browser chrome and is unreliable and slow.
+
+## D. Next Altium experiments (from 0.6.0)
+
+| # | Question | How to find out |
+|---|---|---|
+| D1 | Can placement vs routing vs silkscreen be told apart inside the PCB editor? Today the tracker only knows "PCB editor"; the work stage is your call. | Run `pcbtrack probe` while routing, then while placing, then while editing silkscreen; diff the child windows (status bar text, active layer tab, panel captions). |
+| D2 | Does the tab caption gain a `*` when a document has unsaved edits? It would separate editing from viewing per document. | Same probe, before and after one edit. |
+| D3 | Can the full path of the active document be read, so save counting works without setting project folders? | Process Monitor on `X2.EXE` while switching tabs, or the Projects panel tree via child windows. |

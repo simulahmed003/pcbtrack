@@ -13,6 +13,7 @@ USAGE = """pcbtrack %s - local work-hour tracker for PCB/EDA work
                                       add off-PC work (meeting, milling, soldering)
   python -m pcbtrack stop [--all]     stop tracking (--all also closes the dashboard)
   python -m pcbtrack autostart on|off start tracking when you log in, or not
+  python -m pcbtrack portable         keep data next to the program (USB drive)
   python -m pcbtrack status           is it running, how big is the data
   python -m pcbtrack selfcheck        append a performance line to perf.log
   python -m pcbtrack probe            inspect Altium windows (run while Altium is open)
@@ -140,9 +141,39 @@ def main(argv=None):
             try:
                 urllib.request.urlopen(urllib.request.Request(
                     "http://127.0.0.1:%d/api/quit" % cfg["port"], data=b"{}"), timeout=3)
+                import socket
+                for _ in range(20):         # wait until the port is really free
+                    try:
+                        socket.create_connection(("127.0.0.1", cfg["port"]), 0.3).close()
+                        time.sleep(0.25)
+                    except OSError:
+                        break
                 print("dashboard closed")
             except Exception:
                 print("dashboard was not running")
+        return 0
+    if cmd == "portable":
+        # Move to portable mode: data next to the program (USB drive friendly).
+        import sqlite3, shutil
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        flag = os.path.join(root, "portable.flag")
+        if os.path.exists(flag):
+            print("already portable: data in %s" % os.path.join(root, "data")); return 0
+        if tracker.is_running(cfg):
+            tracker.request_stop(cfg)
+        dst = os.path.join(root, "data")
+        os.makedirs(dst, exist_ok=True)
+        src_db = store.db_path(cfg)
+        if os.path.exists(src_db) and not os.path.exists(os.path.join(dst, "activity.db")):
+            s, d = sqlite3.connect(src_db), sqlite3.connect(os.path.join(dst, "activity.db"))
+            s.backup(d); d.close(); s.close()
+        src_cfg = os.path.join(cfg["_data_dir"], "config.json")
+        if os.path.exists(src_cfg) and not os.path.exists(os.path.join(dst, "config.json")):
+            shutil.copy(src_cfg, dst)
+        open(flag, "w").close()
+        print("portable mode on: data in %s (your old data is still in %s)"
+              % (dst, cfg["_data_dir"]))
+        print("delete portable.flag to go back")
         return 0
     if cmd == "autostart":
         on = (args[:1] or ["on"])[0] != "off"

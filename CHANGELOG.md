@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0 - 2026-10-24
+See docs/10-version-analysis.md for the reasoning.
+
+Added
+- Altium table splits **Detected** (editor or dialog on screen: a fact) from
+  **Work stage** (the guess, amber, until you pick one). Picking a stage
+  relabels the whole row: every block of that document with that stage.
+- Saves column per document, from project folders (set in Settings) and
+  Altium History.
+- "Other software" table with the same columns: cleaned page and window
+  titles ("ESE 4025 Study Pack", "BTN7960.pdf"), collapsed by default.
+- Back from PCBWorkTracker2: this-week totals, Altium focus share, longest
+  Altium stretch, daily target progress (editable), AI-ready brief for any
+  period, portable mode (`make_portable.bat`, `pcbtrack portable`).
+- Settings card: daily target hours, project folders.
+
+Fixed
+- Restarting the dashboard right after closing it failed (port still held).
+- Detection reason is carried to the day view, so dialogs show as
+  "Dialog: Design Rule Checker" in Detected.
+
+Left out on purpose
+- Employer pay / hourly rates: the owner said on 2026-10-24 that only time is
+  needed. Can return as an optional per-client rate.
+
 ## 0.5.0 - 2026-10-24
 Altium first.
 

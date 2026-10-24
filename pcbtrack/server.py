@@ -78,6 +78,9 @@ class H(BaseHTTPRequestHandler):
                 if f == "md":
                     return self._send(200, report.range_markdown(r), "text/markdown; charset=utf-8",
                                       stem + ".md" if dl else None)
+                if f == "brief":
+                    return self._send(200, report.AI_PROMPT + report.range_markdown(r),
+                                      "text/plain; charset=utf-8")
                 if f in ("csv", "csvdetail"):
                     return self._send(200, report.range_csv(r, f == "csvdetail"),
                                       "text/csv; charset=utf-8",
@@ -199,13 +202,22 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True})
             if u.path == "/api/setting":
                 from . import config as _cfg
-                key = body["key"]
-                if key not in ("merge_library_stages_in_report",
-                               "roll_up_subprojects_in_report"):
+                key, val = body["key"], body["value"]
+                if key in ("merge_library_stages_in_report",
+                           "roll_up_subprojects_in_report"):
+                    val = bool(val)
+                elif key == "daily_target_hours":
+                    val = max(0.0, min(24.0, float(val)))
+                elif key == "project_dirs":
+                    val = [str(v).strip() for v in (val or []) if str(v).strip()][:20]
+                    missing = [v for v in val if not os.path.isdir(os.path.expandvars(v))]
+                    if missing:
+                        return self._send(400, {"error": "folder not found: " + ", ".join(missing)})
+                else:
                     return self._send(400, {"error": "not a settable key"})
-                _cfg.save_user({key: bool(body["value"])})
-                CFG[key] = bool(body["value"])
-                return self._send(200, {"ok": True, key: CFG[key]})
+                _cfg.save_user({key: val})
+                CFG[key] = val
+                return self._send(200, {"ok": True, key: val})
             if u.path == "/api/merge_project":
                 src, dst = body["from"], body["to"]
                 c.execute("UPDATE labels SET project_id=? WHERE project_id=?", (dst, src))
@@ -230,16 +242,18 @@ def serve(cfg=None, open_browser=True):
         # ThreadingHTTPServer sets SO_REUSEADDR, which on Windows lets several
         # dashboards bind the same port; an old copy then answers with old
         # code. One dashboard only: a second launch just opens the browser.
+        # (SO_EXCLUSIVEADDRUSE was tried and rejected: it refuses to bind
+        # while the previous dashboard's connections sit in TIME_WAIT, so a
+        # quick restart failed for minutes.)
         allow_reuse_address = False
-
-        def server_bind(self):
-            import socket
-            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
-                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            super().server_bind()
-    try:
-        srv = Server(("127.0.0.1", CFG["port"]), H)
-    except OSError:
+    srv = None
+    for _ in range(8):          # a dashboard that is just closing frees the port
+        try:
+            srv = Server(("127.0.0.1", CFG["port"]), H)
+            break
+        except OSError:
+            time.sleep(0.5)
+    if srv is None:
         print("dashboard already running: %s" % url)
         if open_browser:
             webbrowser.open(url)

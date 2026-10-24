@@ -40,6 +40,7 @@ DEFAULTS = {
     # stages you add from the dashboard; appended to "stages"
     "custom_stages": [],
     "merge_library_stages_in_report": False,
+    "daily_target_hours": 5,
     "doctype_stage": {
         "SCH": "schematic",
         # an open PcbDoc says "PCB work", not which part of it: placement vs
