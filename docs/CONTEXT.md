@@ -132,6 +132,16 @@ having on: it proves editing happened and corroborates the document
 10. **The PcbLib editor reuses the PCB editor's form class**, so the class
     said PCB while the tab said `.PcbLib`. Within one family (sch/pcb) the
     tab's extension wins.
+12. **A document caption is not a project** (found live, 0.5.0). With a
+    PcbDoc in front, Altium's caption is `ESC_Board.PcbDoc - Altium
+    Designer`, and treating `ESC_Board` as a project split one Altium project
+    in two. Altium documents take their project from the `.PrjPcb` they were
+    seen with (`doc_projects` table), else the project open in that Altium
+    session.
+13. **Several dashboards could share port 8765 on Windows** because
+    `ThreadingHTTPServer` sets `SO_REUSEADDR`; an old copy kept answering with
+    old code. The server now binds with `SO_EXCLUSIVEADDRUSE` and a second
+    launch just opens the browser.
 11. **Crash recovery must not trim hand entries.** `close_open_intervals`
     skips `collector='manual'` rows, which may legitimately end after the last
     heartbeat.

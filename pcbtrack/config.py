@@ -26,6 +26,9 @@ DEFAULTS = {
         ],
         "history_dirnames": ["History", "__History"],
     },
+    # the design tools the dashboard puts first; everything else is secondary
+    "cad_processes": ["X2.EXE", "DXP.EXE", "kicad.exe", "eeschema.exe",
+                      "pcbnew.exe", "EasyEDA Pro.exe", "easyeda.exe"],
     "project_dirs": [],
     "stages": [
         "client_meeting", "study_existing", "study_learning", "library_symbol",

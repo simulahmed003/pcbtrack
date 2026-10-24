@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0 - 2026-10-24
+Altium first.
+
+Added
+- "Altium today" card at the top: time in Altium, document switches, time
+  by work stage, and every document per project with its stage.
+- Altium/CAD lane under the 24-hour timeline, coloured by work stage.
+- Live strip shows Altium time today and the last Altium document, even
+  while the dashboard (a browser) is the window in front.
+- Review lists Altium/CAD blocks first and, by default, only those; other
+  apps are one checkbox away.
+- Daily report starts with an Altium / CAD table (project, document, stage).
+- `cad_processes` setting lists the design tools treated as primary.
+
+Fixed
+- A PcbDoc caption created a second project, splitting one Altium project.
+- Several dashboards could run on one port on Windows; old code answered.
+- Live strip totals now use the same arithmetic as the day view.
+
 ## 0.4.0 - 2026-10-24
 Added
 - No work block is left without a project. Order: project file or title,

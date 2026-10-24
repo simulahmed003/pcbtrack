@@ -48,11 +48,25 @@ def now_snapshot(conn, cfg):
         return {"live": False, "heartbeat_age": None}
     age = _t.time() - float(hb) if hb else None
     t0, t1 = sessionize.day_window(dt.date.today(), cfg["day_cutover_hour"])
-    tot = conn.execute(
-        "SELECT COALESCE(SUM(MIN(o.t1,?)-MAX(o.t0,?)),0) s FROM obs o"
-        " WHERE o.state='work' AND o.t1>=? AND o.t0<?",
-        (min(t1, _t.time()), t0, t0, t1)).fetchone()["s"]
+    cad = [a.upper() for a in cfg.get("cad_processes", [])]
+    # same arithmetic as the day view (gap joining, manual entries win), so
+    # the live strip and the cards never disagree; one day is a few
+    # thousand rows at most
+    iv = [x for x in sessionize.intervals(conn, t0, min(t1, _t.time()),
+                                          join_gap=cfg["tick_seconds"] * 2 + 1)
+          if x["state"] == "work"]
+    tot = sum(x["secs"] for x in iv)
+    cad_today = sum(x["secs"] for x in iv if (x["app"] or "").upper() in cad)
+    lc = conn.execute(
+        "SELECT o.t1,o.app,l.stage,l.doc,l.project_id FROM obs o"
+        " LEFT JOIN labels l ON l.obs_id=o.id WHERE o.state='work'"
+        " AND UPPER(o.app) IN (%s) ORDER BY o.t1 DESC LIMIT 1"
+        % ",".join("?" * len(cad)), cad).fetchone() if cad else None
     return {
+        "last_cad": {"t": lc["t1"], "app": lc["app"], "stage": lc["stage"],
+                     "doc": lc["doc"], "project": names.get(lc["project_id"], ""),
+                     "ago_s": round(_t.time() - lc["t1"])} if lc else None,
+        "cad_today_s": max(0.0, cad_today),
         "live": age is not None and age < cfg["tick_seconds"] * 4,
         "heartbeat_age": round(age, 1) if age is not None else None,
         "state": r["state"], "app": r["app"],
@@ -87,6 +101,17 @@ def summary(conn, cfg, day, now=None):
     unknown = sum(x["secs"] for x in work if x["stage"] == "unknown")
     unassigned = sum(x["secs"] for x in work if not x["project_id"])
     guessed = sum(x["secs"] for x in work if x.get("guess"))
+    cadset = {a.upper() for a in cfg.get("cad_processes", [])}
+    cadw = [x for x in work if (x["app"] or "").upper() in cadset]
+    cad_docs = {}
+    for x in cadw:
+        p = names.get(proj_of(x), "(unassigned)")
+        d = cad_docs.setdefault(p, {}).setdefault(x["doc"] or "(no document / dialog)",
+                                                   {"secs": 0.0, "stages": {}})
+        d["secs"] += x["secs"]
+        d["stages"][stage_of(x)] = d["stages"].get(stage_of(x), 0.0) + x["secs"]
+    for p in cad_docs:
+        cad_docs[p] = dict(sorted(cad_docs[p].items(), key=lambda kv: -kv[1]["secs"]))
     notes = store.notes_between(conn, day.isoformat(), day.isoformat())
     by_pd = {}
     for x in work:
@@ -102,6 +127,12 @@ def summary(conn, cfg, day, now=None):
         "unknown_s": unknown,
         "unassigned_s": unassigned,
         "guessed_s": guessed,
+        "cad": {"work_s": sum(x["secs"] for x in cadw),
+                "by_stage": sessionize.rollup(cadw, stage_of),
+                "by_project": {names.get(k, "(unassigned)"): v for k, v in
+                               sessionize.rollup(cadw, proj_of).items()},
+                "docs": cad_docs,
+                "switches": sum(1 for a, b in zip(cadw, cadw[1:]) if a["doc"] != b["doc"])},
         "by_stage": sessionize.rollup(work, stage_of),
         "by_project": {names.get(k, "(unassigned)"): v for k, v in
                        sessionize.rollup(work, proj_of).items()},
@@ -115,15 +146,17 @@ def summary(conn, cfg, day, now=None):
                       "stage": x["stage"], "project": names.get(x["project_id"], ""),
                       "doc": x["doc"], "app": x["app"],
                       "conf": round(x["confidence"], 2), "source": x["source"],
-                      "guess": x.get("guess", 0), "id": x["id"]} for x in iv],
+                      "guess": x.get("guess", 0), "id": x["id"],
+                      "cad": (x["app"] or "").upper() in cadset} for x in iv],
     }
 
 
-def review_queue(conn, cfg, day, limit=25, now=None):
+def review_queue(conn, cfg, day, limit=60, now=None):
     """Blocks worth a human glance: unknown stage, no project, or low
     confidence. Biggest first, so two minutes fixes most of the day."""
     iv, _, _ = load_day(conn, cfg, day, now)
     names = store.project_names(conn)
+    cadset = {a.upper() for a in cfg.get("cad_processes", [])}
     out = []
     for x in iv:
         if x["state"] != "work" or x["id"] is None:
@@ -138,8 +171,10 @@ def review_queue(conn, cfg, day, limit=25, now=None):
                 "stage": x["stage"], "project": names.get(x["project_id"], ""),
                 "project_id": x["project_id"], "conf": round(x["confidence"], 2),
                 "guess": x.get("guess", 0),
+                "cad": (x["app"] or "").upper() in cadset,
             })
-    out.sort(key=lambda r: -r["secs"])
+    # design-tool blocks first, then biggest first
+    out.sort(key=lambda r: (not r["cad"], -r["secs"]))
     return out[:limit]
 
 
@@ -162,6 +197,15 @@ def markdown(conn, cfg, day, now=None):
     if s["guessed_s"]:
         A("")
         A("Project guessed automatically (not confirmed): %s." % fmt(s["guessed_s"]))
+    if s["cad"]["work_s"]:
+        A("")
+        A("## Altium / CAD - %s" % fmt(s["cad"]["work_s"]))
+        A("")
+        A("| Project | Document | Work stage | Time |")
+        A("| --- | --- | --- | --- |")
+        for p, docs in s["cad"]["docs"].items():
+            for d, v in docs.items():
+                A("| %s | %s | %s | %s |" % (p, d, ", ".join(v["stages"]), fmt(v["secs"])))
     for title, d in (("By project", s["by_project"]), ("By work stage", s["by_stage"]),
                      ("By software", s["by_app"]), ("By document", s["by_doc"])):
         if not d:

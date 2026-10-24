@@ -37,6 +37,8 @@ class Classifier:
         self.main_class = cfg["altium"]["main_window_class"].lower()
         self.sticky = None          # (project_id, stage, t, app)
         self.last_project = None    # last project a real signal named
+        self.altium_project = None  # .PrjPcb last seen in Altium's caption
+        self._docmap = {}           # doc name (lower) -> project id
         self.reload_rules()
 
     def reload_rules(self):
@@ -105,6 +107,29 @@ class Classifier:
             if name:
                 pid = store.propose_project(self.c, name)
                 out["reason"] = (out["reason"] + " title-project").strip()
+        if appl in self.altium_procs and shown != PRIVATE:
+            adoc = getattr(sample, "doc", None) or self.doc_from_title(shown)[0]
+            if pid:
+                self.altium_project = pid
+                if adoc and self._docmap.get(adoc.lower()) != pid:
+                    store.learn_doc_project(self.c, adoc, pid)
+                    self._docmap[adoc.lower()] = pid
+            else:
+                # The caption shows a document, not the project: use the
+                # project that document was last seen under, else the project
+                # already open in this Altium session.
+                known = self._docmap.get((adoc or "").lower()) or \
+                    store.doc_project(self.c, adoc)
+                if known:
+                    pid = known
+                    out["reason"] = (out["reason"] + " doc-project").strip()
+                else:
+                    if self.altium_project is None:
+                        self.altium_project = store.recent_project(
+                            self.c, t, apps=self.altium_procs) or ""
+                    if self.altium_project:
+                        pid = self.altium_project
+                        out["reason"] = (out["reason"] + " altium-session-project").strip()
         if not pid:
             pid = store.match_project(self.c, shown)
         if not pid and sample is not None and getattr(sample, "doc", None):

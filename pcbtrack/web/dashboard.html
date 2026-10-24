@@ -45,6 +45,10 @@ textarea{width:100%;min-height:64px}pre{white-space:pre-wrap;font:12px/1.5 ui-mo
 label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut);cursor:pointer}
 tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0 0 var(--guess)}
 .gp{color:var(--guess);border-color:var(--guess)}
+.lane{display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--line);margin-top:6px}
+.lane i{display:block;height:100%}
+.alt td{font-size:13px}.alt .st{display:inline-block;font-size:11px;border-radius:999px;padding:0 7px;margin:1px 3px 1px 0;color:#fff}
+.big{font-size:26px;font-weight:600}
 .item{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
 </style></head><body><div class="wrap">
 <header>
@@ -63,6 +67,8 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
   <div><div class="sub">document</div><b id="ldoc">&mdash;</b></div>
   <div><div class="sub">project</div><b id="lproj">&mdash;</b></div>
   <div><div class="sub">worked today</div><b id="ltot">&mdash;</b></div>
+  <div><div class="sub">Altium today</div><b id="lcad">&mdash;</b></div>
+  <div><div class="sub">last in Altium</div><b id="llast">&mdash;</b></div>
   <div class="sub" id="lwhy" style="flex:1 1 180px"></div>
   <div class="flex">
     <button class="s" id="trk">Stop tracking</button>
@@ -73,8 +79,19 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
 
 <div class="card"><div class="kpis" id="kpis"></div></div>
 
+<div class="card"><h2>Altium today</h2>
+  <div class="flex" style="gap:22px;margin-bottom:8px">
+    <div><div class="sub">time in Altium</div><div class="big" id="aTot">0m</div></div>
+    <div><div class="sub">document switches</div><div class="big" id="aSw">0</div></div>
+    <div style="flex:1 1 260px"><div class="sub">by work stage</div><div id="aStage"></div></div>
+  </div>
+  <div class="tw"><table class="alt" id="aDocs"></table></div>
+</div>
+
 <div class="card"><h2>The whole day, 24 hours</h2>
-  <div class="tl" id="tl"></div><div class="ticks" id="ticks"></div>
+  <div class="tl" id="tl"></div>
+  <div class="sub" style="margin-top:6px">Altium / CAD only, coloured by work stage</div>
+  <div class="lane" id="lane"></div><div class="ticks" id="ticks"></div>
   <div class="sub" style="margin-top:9px" id="legend"></div>
 </div>
 
@@ -99,7 +116,8 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
   <div class="flex" style="justify-content:space-between;margin-bottom:8px">
   <div class="sub">The tracker guesses; you decide. <span class="pill gp">guessed project</span> rows had nothing
   on screen naming a project, so the last project you worked on was used. Ignore them and they stay as guessed.</div>
-  <button class="s p" id="acceptAll">Accept all as shown</button></div>
+  <div class="flex"><label class="sw"><input type="checkbox" id="cadOnly" checked> Altium / CAD blocks only</label>
+  <button class="s p" id="acceptAll">Accept all as shown</button></div></div>
   <div class="tw"><table id="review"></table></div>
 </div>
 
@@ -205,12 +223,33 @@ document.addEventListener('change',async e=>{
   s.innerHTML=isStage?stageOpts(r.stage):projOpts(r.id); s.value=isStage?r.stage:r.id;
 });
 
+const SCOL={schematic:'#2563eb',library_symbol:'#7c3aed',library_footprint:'#c026d3',
+  component_search:'#db2777',pcb_layout:'#0f766e',placement:'#059669',routing:'#0d9488',drc:'#ea580c',
+  erc:'#f97316',eco_sync:'#ca8a04',bom:'#65a30d',fab_output:'#4b5563',unknown:'#94a3b8'};
+const stageCol=s=>SCOL[s]||'#64748b';
+function drawAltium(){
+  const a=D.cad||{work_s:0,docs:{},by_stage:{}};
+  $('aTot').textContent=F(a.work_s); $('aSw').textContent=a.switches||0;
+  const tot=Math.max(1,a.work_s);
+  $('aStage').innerHTML=Object.entries(a.by_stage).map(([k,v])=>
+    `<span class="st" style="background:${stageCol(k)}">${esc(k)} ${F(v)}</span>`).join('')||'<span class="sub">no Altium time yet</span>';
+  $('aStage').querySelectorAll('.st').forEach(e=>e.style.cssText+=';display:inline-block;font-size:11px;border-radius:999px;padding:1px 8px;margin:2px 4px 2px 0;color:#fff');
+  const ps=Object.entries(a.docs||{});
+  $('aDocs').innerHTML=ps.length?'<tr><th>Project / document</th><th>Work stage</th><th style="text-align:right">Time</th></tr>'+
+    ps.map(([p,docs])=>{const pt=Object.values(docs).reduce((x,y)=>x+y.secs,0);
+      return `<tr><td colspan="2"><b>${esc(p)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`+
+      Object.entries(docs).map(([d,v])=>`<tr><td>&nbsp;&nbsp;${esc(d)}</td><td>${Object.entries(v.stages).map(([k,sv])=>
+        `<span class="st" style="background:${stageCol(k)}">${esc(k)}</span>`).join('')}</td><td class="n">${F(v.secs)}</td></tr>`).join('')}).join('')
+    :'<tr><td class="muted">No Altium activity on this day yet. Open Altium and it appears here within 5 seconds.</td></tr>';
+}
+
 function drawTimeline(){
   const tl=$('tl'), iv=D.timeline; if(!iv.length){tl.innerHTML='';return}
   const a=iv[0].t0, b=iv[iv.length-1].t1, w=Math.max(1,b-a);
   tl.innerHTML=iv.map(x=>{const lab=x.state==='work'?`${x.stage||''} ${x.project||''} ${x.doc||''}`:x.state;
     const col=x.source==='manual'?'var(--man)':(x.state==='work'&&x.guess?'repeating-linear-gradient(45deg,var(--work) 0 4px,var(--guess) 4px 8px)':(SC[x.state]||'var(--off)'));
     return `<i title="${HH(x.t0)}-${HH(x.t1)} ${esc(lab)} (${F(x.t1-x.t0)})" style="width:${(x.t1-x.t0)/w*100}%;background:${col}"></i>`}).join('');
+  $('lane').innerHTML=iv.map(x=>`<i title="${x.cad?esc(`${HH(x.t0)}-${HH(x.t1)} ${x.doc||''} ${x.stage} (${F(x.t1-x.t0)})`):''}" style="width:${(x.t1-x.t0)/w*100}%;background:${x.cad?stageCol(x.stage):'transparent'}"></i>`).join('');
   let t='';for(let i=0;i<=6;i++){t+=`<span>${HH(a+(b-a)*i/6)}</span>`}$('ticks').innerHTML=t;
   const L={work:'work',idle:'idle',locked:'locked',off:'not tracked'};
   $('legend').innerHTML=Object.entries(SC).map(([k,v])=>
@@ -220,7 +259,8 @@ function drawTimeline(){
 }
 
 function drawReview(){
-  const rows=D.review||[];
+  const all=D.review||[], rows=$('cadOnly').checked?all.filter(r=>r.cad):all;
+  if(!rows.length&&all.length){$('review').innerHTML=`<tr><td class="muted">No Altium blocks need review. ${all.length} other block(s) hidden &mdash; untick "Altium / CAD blocks only" to see them.</td></tr>`;return}
   if(!rows.length){$('review').innerHTML='<tr><td class="muted">Nothing needs review. Every block is labelled with confidence.</td></tr>';return}
   $('review').innerHTML='<tr><th>When</th><th>Length</th><th>What was on screen</th><th>Project</th><th>Stage</th><th></th></tr>'+
     rows.map(r=>`<tr data-id="${r.id}" class="${r.guess?'guess':''}">
@@ -299,6 +339,9 @@ async function tick(){
   $('ldoc').textContent=n.doc||(n.app||'—');
   $('lproj').textContent=n.project||'—';
   $('ltot').textContent=F(n.work_today_s||0);
+  $('lcad').textContent=F(n.cad_today_s||0);
+  const lc=n.last_cad;
+  $('llast').textContent=lc?`${lc.doc||lc.app}${lc.project?' · '+lc.project:''} · ${lc.ago_s<15?'now':F(lc.ago_s)+' ago'}`:'—';
   $('lwhy').textContent=n.live&&n.reason?n.reason+(n.confidence?`  (confidence ${n.confidence})`:''):'';
 }
 
@@ -313,7 +356,7 @@ async function load(){
   ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
-  drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
+  drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
   bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app);
   const keepM=$('mProj').value, keepS=$('mStage').value;
   $('mProj').innerHTML=projOpts(keepM&&keepM!==NEW?keepM:'','(no project)');
@@ -382,6 +425,7 @@ const shift=k=>{const d=new Date($('date').value+'T12:00');d.setDate(d.getDate()
 $('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
 $('today').onclick=()=>setDay(ISO(new Date()));
 {const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
+$('cadOnly').onchange=()=>drawReview();
 $('acceptAll').onclick=async()=>{
   const trs=[...$('review').querySelectorAll('tr[data-id]')]; if(!trs.length)return;
   if(!confirm(`Confirm all ${trs.length} blocks with the project and stage shown?`))return;

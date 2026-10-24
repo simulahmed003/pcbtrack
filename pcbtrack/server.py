@@ -210,6 +210,8 @@ class H(BaseHTTPRequestHandler):
                 src, dst = body["from"], body["to"]
                 c.execute("UPDATE labels SET project_id=? WHERE project_id=?", (dst, src))
                 c.execute("UPDATE aliases SET project_id=? WHERE project_id=?", (dst, src))
+                c.execute("UPDATE doc_projects SET project_id=? WHERE project_id=?", (dst, src))
+                c.execute("UPDATE projects SET parent_id=? WHERE parent_id=?", (dst, src))
                 c.execute("DELETE FROM projects WHERE id=?", (src,))
                 store.audit(c, "merge_project", src, dst)
                 c.commit()
@@ -222,8 +224,26 @@ class H(BaseHTTPRequestHandler):
 def serve(cfg=None, open_browser=True):
     global CFG
     CFG = cfg or config.load()
-    srv = ThreadingHTTPServer(("127.0.0.1", CFG["port"]), H)
     url = "http://127.0.0.1:%d" % CFG["port"]
+
+    class Server(ThreadingHTTPServer):
+        # ThreadingHTTPServer sets SO_REUSEADDR, which on Windows lets several
+        # dashboards bind the same port; an old copy then answers with old
+        # code. One dashboard only: a second launch just opens the browser.
+        allow_reuse_address = False
+
+        def server_bind(self):
+            import socket
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            super().server_bind()
+    try:
+        srv = Server(("127.0.0.1", CFG["port"]), H)
+    except OSError:
+        print("dashboard already running: %s" % url)
+        if open_browser:
+            webbrowser.open(url)
+        return 0
     print("pcbtrack dashboard: %s   (local only)" % url)
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()

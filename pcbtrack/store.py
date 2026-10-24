@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS rules(
 CREATE TABLE IF NOT EXISTS audit(
   id INTEGER PRIMARY KEY, t REAL, what TEXT, before TEXT, after TEXT);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS doc_projects(
+  doc TEXT PRIMARY KEY COLLATE NOCASE,  -- e.g. ESC_Board.PcbDoc
+  project_id TEXT, seen REAL);          -- learned from the .PrjPcb caption
 """
 
 
@@ -299,14 +302,33 @@ def fuzzy_project(c, *texts):
     return None if tie else best
 
 
-def recent_project(c, before=None):
-    """The project of the latest block a real signal (or the user) named.
-    Used to guess a project when nothing on screen says which one."""
-    r = c.execute(
-        "SELECT l.project_id FROM labels l JOIN obs o ON o.id=l.obs_id"
-        " WHERE l.project_id IS NOT NULL AND COALESCE(l.project_guess,0)=0"
-        " AND o.t0<=? ORDER BY o.t1 DESC LIMIT 1",
-        (before if before is not None else time.time(),)).fetchone()
+def learn_doc_project(c, doc, project_id):
+    """Remember which project a document belongs to, learned whenever Altium's
+    caption names the .PrjPcb while that document is the active tab."""
+    c.execute("INSERT INTO doc_projects(doc,project_id,seen) VALUES(?,?,?)"
+              " ON CONFLICT(doc) DO UPDATE SET project_id=excluded.project_id,"
+              " seen=excluded.seen", (doc, project_id, time.time()))
+
+
+def doc_project(c, doc):
+    if not doc:
+        return None
+    r = c.execute("SELECT project_id FROM doc_projects WHERE doc=?", (doc,)).fetchone()
+    return r["project_id"] if r else None
+
+
+def recent_project(c, before=None, apps=None):
+    """The project of the latest block a real signal (or the user) named,
+    optionally only in the given applications. Used to guess a project when
+    nothing on screen says which one."""
+    sql = ("SELECT l.project_id FROM labels l JOIN obs o ON o.id=l.obs_id"
+           " WHERE l.project_id IS NOT NULL AND COALESCE(l.project_guess,0)=0"
+           " AND o.t0<=?")
+    args = [before if before is not None else time.time()]
+    if apps:
+        sql += " AND UPPER(o.app) IN (%s)" % ",".join("?" * len(apps))
+        args += [a.upper() for a in apps]
+    r = c.execute(sql + " ORDER BY o.t1 DESC LIMIT 1", args).fetchone()
     return r["project_id"] if r else None
 
 

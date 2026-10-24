@@ -256,6 +256,31 @@ def main():
           c5.execute("SELECT project_guess FROM labels WHERE obs_id=?", (g["id"],)).fetchone()[0] == 0)
     c5.close()
 
+    # --- a PcbDoc caption must not become its own project (seen live) ---
+    tmp6 = tempfile.mkdtemp()
+    cfg6 = config.load()
+    cfg6["_data_dir"] = tmp6
+    cfg6["port"] = 18866
+    PCBCAP = "ESC_Board.PcbDoc - Altium Designer Professional (26.7.1)"
+    s6 = [(60, "X2.EXE", ALT, TD, 2, False, "Buttons.SchDoc", "SCH", "document tab"),
+          (120, "X2.EXE", PCBCAP, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab"),
+          (60, "X2.EXE", ALT, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab")]
+    tracker.run(cfg=cfg6, probe=Replay(s6, t0=start),
+                max_ticks=sum(x[0] for x in s6) // tick, quiet=True)
+    # a fresh tracker run that starts while the PcbDoc caption is showing
+    s6b = [(60, "X2.EXE", PCBCAP, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab")]
+    tracker.run(cfg=cfg6, probe=Replay(s6b, t0=start + 600),
+                max_ticks=12, quiet=True)
+    c6 = store.connect(store.db_path(cfg6))
+    sm6 = _rp.summary(c6, cfg6, day, now=start + 700)
+    print("   altium projects:", {k: "%.0fs" % v for k, v in sm6["by_project"].items()},
+          "cad %.0fs" % sm6["cad"]["work_s"])
+    check("PcbDoc caption stays in the .PrjPcb project",
+          list(sm6["by_project"]) == ["ESC_Board_5Vbuck"], str(sm6["by_project"]))
+    check("Altium card has per-document time",
+          sm6["cad"]["docs"].get("ESC_Board_5Vbuck", {}).get("ESC_Board.PcbDoc", {}).get("secs", 0) >= 230)
+    c6.close()
+
     print("\n%d check(s) failed" % len(FAILS))
     return 1 if FAILS else 0
 

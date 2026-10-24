@@ -64,8 +64,12 @@ TITLE_DOC = [
 ]
 
 # Project name sources inside a window title
+# A document name is NOT a project name: with a PcbDoc in front Altium's
+# caption reads "ESC_Board.PcbDoc - Altium Designer", and taking "ESC_Board"
+# as a project split one Altium project in two (2026-10-24). Altium documents
+# get their project from the .PrjPcb seen with them (store.doc_project).
 PROJECT_IN_TITLE = [
     r"([\w.\-]+)\.PrjPcb\b",
     r"([\w.\-]+)\.kicad_pro\b",
-    r"([\w.\-]+)\.(?:SchDoc|PcbDoc|kicad_sch|kicad_pcb)\b",
+    r"([\w.\-]+)\.(?:kicad_sch|kicad_pcb)\b",
 ]
