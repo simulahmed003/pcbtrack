@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 - 2026-10-24
+Added
+- Daily notes: one note per project per day (plus one general note),
+  saved and edited in place; saving empty text removes it. The card lists
+  every project worked on that day, and any other via "+ note for another
+  project". Period notes (several days / projects) moved to their own
+  collapsed card.
+- Reports put each project's notes under that project's section, daily and
+  for any period; a project with notes but no tracked time still gets a
+  section.
+- "One report per project (.zip)": a Markdown report per project plus an
+  all-projects report for the chosen period.
+
 ## 0.8.0 - 2026-10-24
 Added
 - Danger zone (Settings, collapsed, red): delete a project (its time moves to

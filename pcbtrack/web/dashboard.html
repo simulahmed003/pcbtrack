@@ -60,6 +60,8 @@ details.danger summary{cursor:pointer;color:#dc2626;font-weight:600}
 .dz{border-top:1px solid var(--line);padding:10px 0}.dz .grid{margin-top:6px}
 button.warnb{background:#dc2626;color:#fff;border-color:#dc2626}
 tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(--mut)}tr.pgh.closed td:first-child::before{content:'\25B8  '}
+.dn{display:grid;grid-template-columns:minmax(120px,200px) 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding:8px 0}
+.dn textarea{min-height:54px}.dn .st{font-size:12px;color:var(--mut)}
 .item{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
 </style></head><body><div class="wrap">
 <header>
@@ -154,8 +156,16 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <div class="card"><h2>Files by project</h2><div id="pdoc"></div></div>
 </div>
 
-<div class="card"><h2>What I did &mdash; notes</h2>
-  <div class="sub" style="margin-bottom:8px">Optional. A note can cover one day or a period, and one or several projects. It goes into the reports.</div>
+<div class="card"><h2>Daily notes &mdash; what I did</h2>
+  <div class="sub" style="margin-bottom:8px">One note per project for the selected day. Write what got done; edit it any time
+  and save again. Notes go into the daily, weekly and per-project reports.</div>
+  <div id="dayNotes"></div>
+  <div class="flex" style="margin-top:6px"><select id="dnAdd"></select></div>
+</div>
+
+<details class="card"><summary><h2 style="display:inline">Note for a period</h2>
+  <span class="sub">&middot; several days and/or several projects</span></summary>
+  <div style="height:8px"></div>
   <div class="grid">
     <label>From<input type="date" id="nFrom"></label>
     <label>To (optional)<input type="date" id="nTo"></label>
@@ -165,7 +175,7 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <textarea id="noteText" placeholder="e.g. finished power stage schematic, made 3 footprints for the buck converter, started routing"></textarea>
   <div class="flex" style="margin-top:8px"><button class="p" id="noteAdd">Add note</button></div>
   <div id="notes" style="margin-top:10px"></div>
-</div>
+</details>
 
 <div class="card"><h2>Report for a period</h2>
   <div class="grid">
@@ -183,6 +193,7 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
     <button id="rMd">Download report (.md)</button>
     <button id="rCsv">Download summary (.csv)</button>
     <button id="rCsvD">Download every block (.csv)</button>
+    <button id="rZip">One report per project (.zip)</button>
     <button id="rBrief">Copy AI brief</button>
   </div>
   <div id="rOut" style="margin-top:10px"></div>
@@ -420,6 +431,29 @@ function drawManual(){
     await post('/api/manual/delete',{id:+b.dataset.del});load()});
 }
 
+let EXTRA_NOTE=new Set();            // projects added to today's note list by hand
+function drawDayNotes(){
+  const dn=D.daily_notes||{}, byName=Object.fromEntries(D.projects.map(p=>[p.name,p.id]));
+  const worked=Object.keys(D.by_project||{}).map(n=>byName[n]).filter(Boolean);
+  const ids=[...new Set([...worked,...Object.keys(dn).filter(k=>k),...EXTRA_NOTE])];
+  const name=id=>(D.projects.find(p=>p.id===id)||{}).name||id;
+  const box=(id,label)=>`<div class="dn" data-p="${id}"><div><b>${esc(label)}</b>
+      ${D.by_project&&D.by_project[label]?`<div class="st">${F(D.by_project[label])} worked</div>`:''}</div>
+    <textarea placeholder="what got done on ${esc(label)} this day">${esc(dn[id]||'')}</textarea>
+    <div><button class="s p dnsave">Save</button><div class="st dnst">${dn[id]?'saved':''}</div></div></div>`;
+  const el=$('dayNotes');
+  if(el.contains(document.activeElement))return;      // never overwrite while typing
+  el.innerHTML=ids.map(id=>box(id,name(id))).join('')+box('','General (no project)');
+  el.querySelectorAll('.dn').forEach(row=>{
+    const ta=row.querySelector('textarea'), st=row.querySelector('.dnst');
+    ta.oninput=()=>{st.textContent='not saved';dirty=true};
+    row.querySelector('.dnsave').onclick=async()=>{
+      await post('/api/daynote',{day:$('date').value,project_id:row.dataset.p||null,text:ta.value});
+      st.textContent=ta.value.trim()?'saved':'removed';dirty=false;load()}});
+  $('dnAdd').innerHTML='<option value="">+ note for another project&hellip;</option>'+
+    D.projects.filter(p=>!ids.includes(p.id)).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+}
+
 function drawNotes(){
   $('notes').innerHTML=(D.notes||[]).map(n=>`<div class="item"><div>
     <span class="sub">${n.day}${n.day_to?' &rarr; '+n.day_to:''}</span>
@@ -492,7 +526,7 @@ async function load(){
   if(document.activeElement!==$('sDirs'))$('sDirs').value=(D.project_dirs||[]).join('\n');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
-  drawDanger(); drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
+  drawDanger(); drawDayNotes(); drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
   bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app);
   const keepM=$('mProj').value, keepS=$('mStage').value;
   $('mProj').innerHTML=projOpts(keepM&&keepM!==NEW?keepM:'','(no project)');
@@ -503,7 +537,7 @@ async function load(){
   rt.forEach(v=>{const i=document.querySelector(`input[name="rp"][value="${v}"]`);if(i)i.checked=true});
   $('mergeLib').checked=!!D.merge_library;
 }
-function setDay(v){$('date').value=v;$('mDate').value=v;$('nFrom').value=v;load()}
+function setDay(v){EXTRA_NOTE.clear();$('date').value=v;$('mDate').value=v;$('nFrom').value=v;load()}
 function show(t,x){$('dt').textContent=t;$('dpre').textContent=x;$('dlg').showModal()}
 
 $('md').onclick=async()=>show('Day report',await (await fetch('/api/markdown?date='+$('date').value)).text());
@@ -562,6 +596,8 @@ $('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
 $('today').onclick=()=>setDay(ISO(new Date()));
 {const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
 $('cadOnly').onchange=()=>drawReview();
+$('dnAdd').onchange=e=>{if(e.target.value){EXTRA_NOTE.add(e.target.value);drawDayNotes()}};
+$('rZip').onclick=()=>location.href=rq('zip');
 document.querySelectorAll('[data-dz]').forEach(btn=>btn.onclick=async()=>{
   const act=btn.dataset.dz; let body={action:act}, what='';
   if(act==='delete_project'){body.id=$('dzProj').value;body.move_to=$('dzProjTo').value||null;body.confirm=$('dzProjOk').value;

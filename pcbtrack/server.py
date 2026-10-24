@@ -79,6 +79,9 @@ class H(BaseHTTPRequestHandler):
                 if f == "md":
                     return self._send(200, report.range_markdown(r), "text/markdown; charset=utf-8",
                                       stem + ".md" if dl else None)
+                if f == "zip":
+                    return self._send(200, report.range_zip(c, CFG, d0, d1, pids),
+                                      "application/zip", stem + "_by_project.zip")
                 if f == "brief":
                     return self._send(200, report.AI_PROMPT + report.range_markdown(r),
                                       "text/plain; charset=utf-8")
@@ -127,6 +130,10 @@ class H(BaseHTTPRequestHandler):
                 store.add_note(c, day, body.get("project_id"), body["text"][:2000],
                                day_to=body.get("day_to") or None,
                                project_ids=body.get("project_ids"))
+                return self._send(200, {"ok": True})
+            if u.path == "/api/daynote":
+                store.set_daily_note(c, body["day"], body.get("project_id") or None,
+                                     body.get("text") or "")
                 return self._send(200, {"ok": True})
             if u.path == "/api/note/delete":
                 c.execute("DELETE FROM notes WHERE id=?", (int(body["id"]),))

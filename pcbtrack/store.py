@@ -74,6 +74,10 @@ def connect(path):
         # and several projects at once (comma-separated ids in project_ids)
         c.execute("ALTER TABLE notes ADD COLUMN day_to TEXT")
         c.execute("ALTER TABLE notes ADD COLUMN project_ids TEXT")
+    if "kind" not in {r["name"] for r in c.execute("PRAGMA table_info(notes)")}:
+        # 'daily'  - the one note per project per day, edited in place
+        # 'period' - a note over several days and/or projects
+        c.execute("ALTER TABLE notes ADD COLUMN kind TEXT DEFAULT 'period'")
     if first:
         c.execute("INSERT OR IGNORE INTO meta(k,v) VALUES('schema','1')")
     c.commit()
@@ -353,7 +357,8 @@ def notes_between(c, d0, d1):
     names = project_names(c)
     out = []
     for n in c.execute(
-            "SELECT id,day,day_to,project_id,project_ids,text FROM notes"
+            "SELECT id,day,day_to,project_id,project_ids,text,"
+            "       COALESCE(kind,'period') kind FROM notes"
             " WHERE day<=? AND COALESCE(day_to,day)>=? ORDER BY day,created",
             (d1, d0)):
         ids = [p for p in (n["project_ids"] or n["project_id"] or "").split(",") if p]
@@ -361,8 +366,34 @@ def notes_between(c, d0, d1):
                     "project_ids": ids,
                     "projects": [names.get(p, p) for p in ids],
                     "project": ", ".join(names.get(p, p) for p in ids),
-                    "text": n["text"]})
+                    "text": n["text"], "kind": n["kind"]})
     return out
+
+
+def set_daily_note(c, day, project_id, text):
+    """The one note for (day, project); '' or None project = general note.
+    Saving again replaces it; saving empty text removes it."""
+    pid = project_id or None
+    text = (text or "").strip()
+    old = c.execute("SELECT id,text FROM notes WHERE kind='daily' AND day=?"
+                    " AND COALESCE(project_id,'')=?", (day, pid or "")).fetchone()
+    if old:
+        if text:
+            c.execute("UPDATE notes SET text=?, created=? WHERE id=?",
+                      (text[:4000], time.time(), old["id"]))
+        else:
+            c.execute("DELETE FROM notes WHERE id=?", (old["id"],))
+        audit(c, "daily_note:%s:%s" % (day, pid), old["text"], text)
+    elif text:
+        c.execute("INSERT INTO notes(day,project_id,project_ids,text,created,kind)"
+                  " VALUES(?,?,?,?,?,'daily')", (day, pid, pid, text[:4000], time.time()))
+    c.commit()
+
+
+def daily_notes(c, day):
+    """{project_id or '': text} for one day."""
+    return {(r["project_id"] or ""): r["text"] for r in c.execute(
+        "SELECT project_id,text FROM notes WHERE kind='daily' AND day=?", (day,))}
 
 
 def create_project(c, name, client=None, parent_id=None, status="active"):

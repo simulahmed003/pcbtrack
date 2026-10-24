@@ -333,6 +333,26 @@ def main():
                                              t0, t1, now=start + 700)
     check("24h accounting exact after split and undo", ok6, "%.0fs vs %.0fs" % (g6, w6))
 
+    # one daily note per project, edited in place, exported per project
+    store.set_daily_note(c6, day.isoformat(), other6, "routed power section")
+    store.set_daily_note(c6, day.isoformat(), other6, "routed power section, DRC clean")
+    store.set_daily_note(c6, day.isoformat(), None, "general: tidied library")
+    dn = store.daily_notes(c6, day.isoformat())
+    check("daily note is replaced, not duplicated",
+          dn.get(other6) == "routed power section, DRC clean" and len(dn) == 2, str(dn))
+    rr7 = _rp.range_summary(c6, cfg6, day, day, [other6], now=start + 700)
+    md7 = _rp.range_markdown(rr7)
+    check("project report carries its daily note under the project",
+          "## Test jig" in md7 and "DRC clean" in md7.split("## Test jig")[1], md7[-300:])
+    import zipfile, io
+    zf = zipfile.ZipFile(io.BytesIO(_rp.range_zip(c6, cfg6, day, day)))
+    check("zip has one report per project", "Test_jig.md" in zf.namelist()
+          and "all_projects.md" in zf.namelist(), str(zf.namelist()))
+    check("day report shows notes per project",
+          "**Test jig**" in _rp.markdown(c6, cfg6, day, now=start + 700))
+    store.set_daily_note(c6, day.isoformat(), None, "")
+    check("saving an empty note removes it", "" not in store.daily_notes(c6, day.isoformat()))
+
     # danger zone: backup, delete project (time moves), client, stage, range
     bk = store.backup(c6, tmp6)
     check("backup written", os.path.getsize(bk) > 0)

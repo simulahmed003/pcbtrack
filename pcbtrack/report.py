@@ -302,7 +302,8 @@ def summary(conn, cfg, day, now=None):
         "by_doc": sessionize.rollup(work, lambda x: x["doc"]),
         "by_project_doc": {p: dict(sorted(d.items(), key=lambda kv: -kv[1]))
                            for p, d in by_pd.items()},
-        "notes": notes,
+        "notes": [n for n in notes if n["kind"] != "daily"],
+        "daily_notes": store.daily_notes(conn, day.isoformat()),
         "manual": store.manual_between(conn, t0, t1),
         "timeline": [{"t0": x["t0"], "t1": x["t1"], "state": x["state"],
                       "stage": x["stage"], "project": names.get(x["project_id"], ""),
@@ -379,10 +380,17 @@ def markdown(conn, cfg, day, now=None):
         A("| --- | --- |")
         for k, v in d.items():
             A("| %s | %s |" % (k, fmt(v)))
-    if s["notes"]:
+    names = store.project_names(conn)
+    dn = s["daily_notes"]
+    if dn or s["notes"]:
         A("")
         A("## What I actually did")
         A("")
+        for pid, text in sorted(dn.items(), key=lambda kv: (kv[0] == "", names.get(kv[0], ""))):
+            A("**%s**" % (names.get(pid, pid) if pid else "General"))
+            A("")
+            A(text)
+            A("")
         for n in s["notes"]:
             period = (" (%s to %s)" % (n["day"], n["day_to"])) if n["day_to"] else ""
             A("- %s%s%s" % (("**%s** - " % n["project"]) if n["project"] else "",
@@ -501,13 +509,20 @@ def range_markdown(r):
     if r["guessed_s"]:
         A("")
         A("Project guessed automatically (not confirmed): %s." % fmt(r["guessed_s"]))
-    for p, stages in sorted(r["by_project_stage"].items(),
-                            key=lambda kv: -sum(kv[1].values())):
+    sections = dict(r["by_project_stage"])
+    # a project with notes but no tracked time in the period still gets a section
+    for n in r["notes"]:
+        for p in n["projects"]:
+            if p not in sections and (not r["projects_filter"] or p in r["projects_filter"]):
+                sections[p] = {}
+    r = dict(r, by_project_stage=sections)
+    for p, stages in sorted(sections.items(), key=lambda kv: -sum(kv[1].values())):
         A("")
         A("## %s - %s" % (p, fmt(sum(stages.values()))))
-        A("")
-        A("| Work stage | Time |")
-        A("| --- | --- |")
+        if stages:
+            A("")
+            A("| Work stage | Time |")
+            A("| --- | --- |")
         for k, v in stages.items():
             A("| %s | %s |" % (k, fmt(v)))
         docs = r["by_project_doc"].get(p)
@@ -517,6 +532,7 @@ def range_markdown(r):
             A("| --- | --- |")
             for k, v in docs.items():
                 A("| %s | %s |" % (k, fmt(v)))
+        _notes_md(A, [n for n in r["notes"] if p in n["projects"]])
     for title, d in (("By day", r["by_day"]), ("By software", r["by_app"])):
         if d:
             A("")
@@ -526,15 +542,47 @@ def range_markdown(r):
             A("| --- | --- |")
             for k, v in d.items():
                 A("| %s | %s |" % (k, fmt(v)))
-    if r["notes"]:
+    shown = set(r["by_project_stage"])
+    rest = [n for n in r["notes"] if not n["projects"] or not (set(n["projects"]) & shown)]
+    if rest:
         A("")
-        A("## What I actually did")
-        A("")
-        for n in r["notes"]:
-            when = n["day"] + ((" to " + n["day_to"]) if n["day_to"] else "")
-            A("- %s%s: %s" % (when, (" (%s)" % n["project"]) if n["project"] else "",
-                              n["text"]))
+        A("## Other notes")
+        _notes_md(A, rest, heading=False)
     return "\n".join(L) + "\n"
+
+
+def _notes_md(A, notes, heading=True):
+    """Notes in date order: '- 2026-10-24: text' (multi-line text indented)."""
+    if not notes:
+        return
+    A("")
+    if heading:
+        A("**What I did**")
+        A("")
+    for n in notes:
+        when = n["day"] + ((" to " + n["day_to"]) if n["day_to"] else "")
+        extra = "" if heading or not n["project"] else " (%s)" % n["project"]
+        lines = (n["text"] or "").splitlines() or [""]
+        A("- %s%s: %s" % (when, extra, lines[0]))
+        for ln in lines[1:]:
+            A("  " + ln)
+
+
+def range_zip(conn, cfg, d0, d1, project_ids=None):
+    """One Markdown report per project (plus an all-projects one), zipped."""
+    import io, zipfile
+    names = store.project_names(conn)
+    ids = project_ids or list(names)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("all_projects.md",
+                   range_markdown(range_summary(conn, cfg, d0, d1, project_ids)))
+        for pid in ids:
+            r = range_summary(conn, cfg, d0, d1, [pid])
+            if r["work_s"] or r["notes"]:
+                safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", names.get(pid, pid)).strip("_") or pid
+                z.writestr("%s.md" % safe, range_markdown(r))
+    return buf.getvalue()
 
 
 def range_csv(r, detail=False):
