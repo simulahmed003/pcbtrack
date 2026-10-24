@@ -21,6 +21,20 @@ def check(name, cond, detail=""):
 
 
 def main():
+    # every scratch database of this run lives under one folder, removed at
+    # the end, so test runs leave nothing behind in %TEMP%
+    base = tempfile.mkdtemp(prefix="pcbtrack-test-")
+    tempfile.tempdir = base
+    try:
+        return _run()
+    finally:
+        tempfile.tempdir = None
+        import shutil, gc
+        gc.collect()                  # close stray sqlite handles (Windows locks open files)
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def _run():
     tmp = tempfile.mkdtemp()
     cfg = config.load()
     cfg["_data_dir"] = tmp
