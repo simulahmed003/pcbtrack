@@ -64,6 +64,7 @@ class H(BaseHTTPRequestHandler):
                 n = report.now_snapshot(c, CFG)
                 n["running"] = tracker.is_running(CFG)
                 n["autostart"] = os.path.exists(tracker.startup_file())
+                n["stopped_by_user"] = _stopped_by_user(c)
                 return self._send(200, n)
             if u.path == "/api/markdown":
                 return self._send(200, report.markdown(c, CFG, _day(q)),
@@ -307,9 +308,41 @@ def _danger(self, c, body):
 H._danger = _danger
 
 
+def _stopped_by_user(c):
+    """True when the last stop was asked for (Stop tracking / pcbtrack stop),
+    False when the tracker went away on its own."""
+    started = float(store.meta_get(c, "started") or 0)
+    req = float(store.meta_get(c, "stop_request") or 0)
+    return req > started
+
+
+def _watchdog(every=30):
+    """While the dashboard runs, bring back a tracker that stopped without
+    being asked to. At most one restart per 5 minutes, logged."""
+    from . import tracker
+    last = 0.0
+    while True:
+        time.sleep(every)
+        try:
+            if tracker.is_running(CFG) or time.time() - last < 300:
+                continue
+            c = store.connect(store.db_path(CFG))
+            try:
+                if store.meta_get(c, "heartbeat") and not _stopped_by_user(c):
+                    last = time.time()
+                    tracker._log("watchdog: tracker was not running, restarting")
+                    tracker.start_detached(CFG)
+            finally:
+                c.close()
+        except Exception as e:
+            tracker._log("watchdog: %r" % (e,))
+
+
 def serve(cfg=None, open_browser=True):
     global CFG
     CFG = cfg or config.load()
+    from .tracker import guard_streams
+    guard_streams(CFG, "dashboard.log")
     url = "http://127.0.0.1:%d" % CFG["port"]
 
     class Server(ThreadingHTTPServer):
@@ -336,6 +369,7 @@ def serve(cfg=None, open_browser=True):
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
+        threading.Thread(target=_watchdog, daemon=True).start()
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")

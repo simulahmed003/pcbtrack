@@ -37,8 +37,36 @@ class Lock:
             self.s.close()
 
 
+def _log(msg):
+    """Never raises. Under pythonw sys.stderr is None, and a bare
+    sys.stderr.write() inside an except block killed the tracker silently on
+    2026-10-24 (2 h 20 min lost). guard_streams() points it at a log file."""
+    try:
+        sys.stderr.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg))
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def guard_streams(cfg, name):
+    """Background runs (pythonw) have no console: send output to a log file
+    in the data folder, rotated when it passes 1 MB."""
+    if sys.stderr is not None and sys.stdout is not None:
+        return
+    path = os.path.join(cfg["_data_dir"], name)
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 1_000_000:
+            os.replace(path, path + ".old")
+        f = open(path, "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = f
+    except Exception:
+        pass
+
+
 def run(cfg=None, probe=None, max_ticks=None, quiet=False):
     cfg = cfg or config.load()
+    if probe is None:
+        guard_streams(cfg, "tracker.log")
     tick = cfg["tick_seconds"]
     idle_after = cfg["idle_seconds"]
     lock = Lock(cfg["port"] + 1)
@@ -64,6 +92,9 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
     scan_since = float(store.meta_get(conn, "scan_since") or (time.time() - 3600))
     n = 0
     started = time.time()
+    if live:
+        store.meta_set(conn, "started", started)   # lets "stopped by user?" be exact
+        conn.commit()
     if not quiet:
         print("pcbtrack %s tracking every %ds -> %s"
               % (__import__("pcbtrack").__version__, tick, store.db_path(cfg)))
@@ -71,13 +102,12 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
         while max_ticks is None or n < max_ticks:
             n += 1
             loop_t = time.time()
-            # "Stop tracking" (dashboard or `pcbtrack stop`) leaves a request
-            # in the database; a clean exit, so the time shows as not tracked.
-            if live and float(store.meta_get(conn, "stop_request") or 0) > started:
-                if not quiet:
-                    print("stop requested")
-                break
             try:
+                # "Stop tracking" (dashboard or `pcbtrack stop`) leaves a request
+                # in the database; a clean exit, so the time shows as not tracked.
+                if live and float(store.meta_get(conn, "stop_request") or 0) > started:
+                    _log("stop requested")
+                    break
                 s = probe(tick)
                 if s is None:
                     break
@@ -94,7 +124,7 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                         store.meta_set(conn, "scan_since", scan_since)
                     except Exception as e:
                         if not quiet:
-                            sys.stderr.write("scan: %s\n" % e)
+                            _log("scan: %s" % e)
                     last_scan = t
 
                 # ---- state ----
@@ -136,9 +166,17 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                 store.meta_set(conn, "collector", collector)
                 conn.commit()
             except Exception as e:
-                sys.stderr.write("tick error: %s\n" % e)
+                _log("tick error: %r" % (e,))
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             if live:
                 time.sleep(max(0.0, tick - (time.time() - loop_t)))
+    except Exception:
+        import traceback
+        _log("tracker crashed:\n" + traceback.format_exc())
+        raise
     except KeyboardInterrupt:
         if not quiet:
             print("\nstopped")

@@ -374,6 +374,33 @@ def main():
     check("deleting a day removes its work", sm9["work_s"] == 0, "%.0fs" % sm9["work_s"])
     c6.close()
 
+    # a tick error under pythonw (no stderr) must not stop the tracker
+    tmp8 = tempfile.mkdtemp()
+    cfg8 = config.load()
+    cfg8["_data_dir"] = tmp8
+    cfg8["port"] = 18877
+    rep8 = Replay([(60, "X2.EXE", ALT, TD, 2, False, "Buttons.SchDoc", "SCH", "document tab")],
+                  t0=start)
+    calls = {"n": 0}
+
+    def flaky(tick=5):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("database is locked")
+        return rep8(tick)
+    saved_err = sys.stderr
+    sys.stderr = None
+    try:
+        rc8 = tracker.run(cfg=cfg8, probe=flaky, max_ticks=14, quiet=True)
+    finally:
+        sys.stderr = saved_err
+    c8 = store.connect(store.db_path(cfg8))
+    n8 = c8.execute("SELECT COUNT(*) FROM obs").fetchone()[0]
+    last8 = c8.execute("SELECT MAX(t1) FROM obs").fetchone()[0]
+    check("tracker survives a tick error with no stderr",
+          rc8 == 0 and calls["n"] >= 12 and last8 >= start + 50, "rc=%s calls=%d rows=%d" % (rc8, calls["n"], n8))
+    c8.close()
+
     print("\n%d check(s) failed" % len(FAILS))
     return 1 if FAILS else 0
 

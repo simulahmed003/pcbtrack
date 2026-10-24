@@ -142,6 +142,14 @@ having on: it proves editing happened and corroborates the document
     `ThreadingHTTPServer` sets `SO_REUSEADDR`; an old copy kept answering with
     old code. The server now binds with `SO_EXCLUSIVEADDRUSE` and a second
     launch just opens the browser.
+14. **Under pythonw, `sys.stderr` is None** (found live, 0.9.1). The tick
+    error handler called `sys.stderr.write`, which raised inside the
+    `except`, so the first transient error (e.g. "database is locked" while
+    the dashboard wrote) ended the tracker silently: 2 h 20 min lost on
+    2026-10-24. All output now goes through `tracker._log` (never raises);
+    background runs log to `tracker.log` / `dashboard.log` in the data
+    folder; the dashboard's watchdog restarts a tracker that stopped without
+    a stop request (`meta.started` vs `meta.stop_request`).
 11. **Crash recovery must not trim hand entries.** `close_open_intervals`
     skips `collector='manual'` rows, which may legitimately end after the last
     heartbeat.

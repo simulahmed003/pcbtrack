@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.1 - 2026-10-24
+Fixed
+- The tracker could stop silently when running in the background: under
+  pythonw there is no stderr, and writing a tick error there raised and
+  ended the process (2 h 20 min unrecorded on 2026-10-24). Errors are now
+  logged to `tracker.log` / `dashboard.log` in the data folder and tracking
+  continues.
+
+Added
+- Watchdog: while the dashboard runs it restarts a tracker that stopped
+  without being asked to (at most once per 5 minutes, logged). A Stop
+  tracking request is respected.
+- The live strip says "stopped unexpectedly" (red) when that happens.
+
 ## 0.9.0 - 2026-10-24
 Added
 - Daily notes: one note per project per day (plus one general note),

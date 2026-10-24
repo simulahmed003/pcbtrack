@@ -492,7 +492,8 @@ async function tick(){
   let n; try{ n=await (await fetch('/api/now')).json() }catch(e){ return }
   $('beat').className='dot '+(n.live&&n.running?'beat':'cold');
   const st=n.state==='work'?(n.stage||'working'):(n.state||'-');
-  $('lnow').textContent=!n.running?'tracking stopped':(n.live?st:'starting…');
+  $('lnow').textContent=!n.running?(n.stopped_by_user?'tracking stopped':'stopped unexpectedly'):(n.live?st:'starting…');
+  $('lnow').style.color=!n.running&&!n.stopped_by_user?'#dc2626':'';
   $('trk').textContent=n.running?'Stop tracking':'Start tracking';
   $('trk').className='s'+(n.running?'':' p');
   if(document.activeElement!==$('auto'))$('auto').checked=!!n.autostart;
