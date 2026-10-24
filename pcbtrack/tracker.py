@@ -53,7 +53,7 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
     if closed and not quiet:
         print("recovered: closed %d interval(s) left open by a previous run" % closed)
     live = probe is None
-    probe = probe or __import__("pcbtrack.sysmon", fromlist=["x"]).get_probe()
+    probe = probe or __import__("pcbtrack.sysmon", fromlist=["x"]).get_probe(cfg)
     cl = Classifier(cfg, conn)
     w = store.ObsWriter(conn, collector, tick * 3,
                         max_span=cfg.get("max_interval_seconds", 600))
@@ -106,7 +106,7 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                 # "is not guaranteed to be incremental" (Microsoft), so when
                 # they disagree take the LATER one: backdating must never
                 # reach back over activity we actually observed.
-                lab = cl.label(t, s.app, title, wclass, state)
+                lab = cl.label(t, s.app, title, wclass, state, s)
                 lkey = (lab["project_id"], lab["stage"], lab["doc"])
 
                 if state == "idle" and prev_state != "idle":

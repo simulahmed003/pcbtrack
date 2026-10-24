@@ -137,6 +137,35 @@ def main():
     check("human label not overwritten by automation", got_stage == "study_existing")
     conn.close()
 
+    # --- the active-document signal, discovered by probe on 2026-10-24 ---
+    tmp2 = tempfile.mkdtemp()
+    cfg2 = config.load()
+    cfg2["_data_dir"] = tmp2
+    cfg2["port"] = 18799
+    s2 = [(1800, "X2.EXE", ALT, TD, 2, False, "ESC_PCB.SchDoc", "SCH", "document tab"),
+          (900, "X2.EXE", ALT, TD, 2, False, "ESC_PCBLIB.PcbLib", "PCBLIB", "document tab"),
+          (900, "X2.EXE", ALT, TD, 2, False, "ESC_SCHLIB.SchLib", "SCHLIB", "document tab"),
+          (1800, "X2.EXE", ALT, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab"),
+          (300, "X2.EXE", "Design Rule Checker [mm]", "TDrcForm", 2, False,
+           "ESC_Board.PcbDoc", "PCB", "document tab")]
+    tracker.run(cfg=cfg2, probe=Replay(s2, t0=start),
+                max_ticks=sum(x[0] for x in s2) // tick + 3, quiet=True)
+    c2 = store.connect(store.db_path(cfg2))
+    from pcbtrack import report as _rp
+    sm = _rp.summary(c2, cfg2, day, now=start + sum(x[0] for x in s2))
+    bs, bd = sm["by_stage"], sm["by_doc"]
+    print("   active-doc stages:", {k: "%.0fm" % (v / 60) for k, v in bs.items()})
+    print("   active-doc docs  :", {k: "%.0fm" % (v / 60) for k, v in bd.items()})
+    check("active document: all four types separated",
+          bs.get("schematic", 0) > 1500 and bs.get("library_footprint", 0) > 700
+          and bs.get("library_symbol", 0) > 700 and bs.get("routing", 0) > 1500)
+    check("active document: dialog still wins over it", bs.get("drc", 0) > 250)
+    check("active document: zero unknown", bs.get("unknown", 0) == 0,
+          "%.0fs" % bs.get("unknown", 0))
+    check("per-document breakdown present",
+          len([k for k in bd if k]) == 4, str(sorted(k for k in bd if k)))
+    c2.close()
+
     print("\n%d check(s) failed" % len(FAILS))
     return 1 if FAILS else 0
 

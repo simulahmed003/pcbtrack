@@ -48,12 +48,16 @@ class H(BaseHTTPRequestHandler):
                 s = report.summary(c, CFG, _day(q))
                 s["review"] = report.review_queue(c, CFG, _day(q))
                 s["projects"] = [dict(r) for r in c.execute(
-                    "SELECT p.id,p.name,p.status,c.name client FROM projects p"
-                    " LEFT JOIN clients c ON c.id=p.client_id ORDER BY p.name")]
+                    "SELECT p.id,p.name,p.status,p.parent_id,c.name client"
+                    " FROM projects p LEFT JOIN clients c ON c.id=p.client_id"
+                    " ORDER BY p.name")]
+                s["merge_library"] = bool(CFG.get("merge_library_stages_in_report"))
                 s["clients"] = [dict(r) for r in c.execute("SELECT id,name FROM clients")]
                 s["stages"] = CFG["stages"]
                 s["generated"] = time.time()
                 return self._send(200, s)
+            if u.path == "/api/now":
+                return self._send(200, report.now_snapshot(c, CFG))
             if u.path == "/api/markdown":
                 return self._send(200, report.markdown(c, CFG, _day(q)),
                                   "text/plain; charset=utf-8")
@@ -105,11 +109,24 @@ class H(BaseHTTPRequestHandler):
                 if body.get("client"):
                     cid = store.ensure_client(c, body["client"][:120])
                     c.execute("UPDATE projects SET client_id=? WHERE id=?", (cid, pid))
+                if "parent_id" in body:
+                    pv = body["parent_id"] or None
+                    if pv != pid:
+                        c.execute("UPDATE projects SET parent_id=? WHERE id=?", (pv, pid))
                 if body.get("alias"):
                     c.execute("INSERT INTO aliases(project_id,pattern,kind)"
                               " VALUES(?,?,?)", (pid, body["alias"], "user"))
                 c.commit()
                 return self._send(200, {"ok": True})
+            if u.path == "/api/setting":
+                from . import config as _cfg
+                key = body["key"]
+                if key not in ("merge_library_stages_in_report",
+                               "roll_up_subprojects_in_report"):
+                    return self._send(400, {"error": "not a settable key"})
+                _cfg.save_user({key: bool(body["value"])})
+                CFG[key] = bool(body["value"])
+                return self._send(200, {"ok": True, key: CFG[key]})
             if u.path == "/api/merge_project":
                 src, dst = body["from"], body["to"]
                 c.execute("UPDATE labels SET project_id=? WHERE project_id=?", (dst, src))

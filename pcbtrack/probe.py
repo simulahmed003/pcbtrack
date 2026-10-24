@@ -56,15 +56,29 @@ def windows_snapshot():
         def on_child(h, _):
             c, t = cls(h), text(h)
             if c or t:
-                kids.append({"class": c, "title": t[:60]})
+                kids.append({"class": c, "title": t[:60],
+                             "visible": bool(u32.IsWindowVisible(h))})
             return True
         u32.EnumChildWindows(r["hwnd"], CB(on_child), 0)
+        # Keep EVERY tab/editor window (they are the active-document signal);
+        # collapse only the decorative classes.
+        from .altium import TAB_CLASSES, EDITOR_CLASSES
+        keep = set(TAB_CLASSES) | set(EDITOR_CLASSES)
         seen, uniq = set(), []
         for k in kids:
-            if k["class"] not in seen:
+            if k["class"] in keep:
+                uniq.append(k)
+            elif k["class"] not in seen:
                 seen.add(k["class"])
                 uniq.append(k)
-        r["children"] = uniq[:40]
+        r["children"] = uniq[:60]
+        r["active_document"] = None
+        try:
+            from .altium import pick_active
+            r["active_document"] = pick_active(
+                [(k["class"], k["title"], k.get("visible", True)) for k in kids])
+        except Exception:
+            pass
     return rows
 
 
@@ -93,6 +107,8 @@ def run(seconds=120, interval=10):
         for w in snap:
             print("[%s] proc=%s class=%s\n     title=%r" % (
                 time.strftime("%H:%M:%S"), w["proc"], w["class"], w["title"]))
+            if w.get("active_document"):
+                print("     ACTIVE DOCUMENT -> %s" % (w["active_document"],))
             if w["children"]:
                 print("     child classes: %s" % ", ".join(
                     c["class"] for c in w["children"][:12]))

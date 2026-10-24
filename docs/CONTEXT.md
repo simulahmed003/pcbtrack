@@ -15,6 +15,10 @@ Secondary: KiCad, EasyEDA Pro. Repo lives at `D:\Tracker`.
 
 ## The one fact that shapes the whole design
 
+**Settled 24 Oct 2026 by probe.** See "The signal that actually works" below:
+the active document IS readable from Altium's child windows. The Auto Save
+route described next is now the *corroborating* signal, not the primary one.
+
 **Altium's window title cannot tell you which document is open.** The
 "Show full path in title bar" option was *removed in Altium Designer 18.1*.
 Since then the caption is `<Project>.PrjPcb - Altium Designer <ver>`, so
@@ -36,9 +40,31 @@ the answer**:
 | `.SchLib` | library - symbol |
 | `.PcbLib` | library - footprint |
 
-`kicad-wakatime` solves the identical problem the same way for KiCad. This is
-why **Auto Save must be on** or the tracker is blind (see
-`07-install-windows.md`).
+`kicad-wakatime` solves the identical problem the same way for KiCad.
+
+## The signal that actually works (probe result, 24 Oct 2026)
+
+Altium Designer 26.7.1, process `X2.EXE`, main window class `TDocumentForm`.
+Two child windows give the answer with plain Win32 - no UI Automation, no COM,
+no plugin, no Auto Save dependency:
+
+| Child class | What its caption holds |
+| --- | --- |
+| `TdxTabSheet`, `TViewComponent` | the active document tab: `[1] ESC_PCB.SchDoc`, `ESC_Board.PcbDoc`, or `Home Page` when none |
+| `TSCHView_GraphicalForm`, `TPCBView_GraphicalForm`, `TSCHView_LibraryGraphicalForm` | one per open document; the **visible** one is the active editor |
+
+Measured in the probe: the tab caption changed from `Home Page` to
+`[1] ESC_PCB.SchDoc` to `ESC_Board.PcbDoc` exactly as the owner switched
+documents. `pcbtrack/altium.py` reads it; `pick_active()` is unit-tested
+against the recorded probe samples.
+
+Do **not** read `TGUIDocBarButton` - it lists *other* open documents, not the
+active one. Skip the hidden zero-size `TApplication` window too.
+
+This beats Auto Save because it sees **viewing**, not only editing, and is
+instant rather than lagging the autosave interval. Auto Save is still worth
+having on: it proves editing happened and corroborates the document
+(see `07-install-windows.md`), but stage tracking no longer depends on it.
 
 ## Design principles, in priority order
 
@@ -88,7 +114,12 @@ why **Auto Save must be on** or the tracker is blind (see
 4. **A dialog in the foreground outranks file evidence.** If the Design Rule
    Checker is open, that is DRC, whatever was autosaved five minutes ago.
 5. **Live, evidence arrives after the work.** `classify.backfill` fills in the
-   start of a session once the first Auto Save lands.
+   start of a session once the first Auto Save lands. Much less critical now
+   that the active document is read directly, but still useful.
+6. **A positional `INSERT` broke** when `projects.parent_id` was added by
+   migration. Every insert names its columns now; keep it that way.
+7. **`pkill -f "pcbtrack serve"` kills the shell that runs it**, because the
+   pattern matches its own command line. Use a stored PID.
 
 ## Working agreement with the owner
 

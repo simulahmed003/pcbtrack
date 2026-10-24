@@ -20,21 +20,26 @@ Built for Altium Designer on Windows first; KiCad and EasyEDA next.
 
 Altium's window title only ever shows the *project*, never the open document
 (the option was removed in Altium Designer 18.1). So schematic, PCB layout,
-symbol-library and footprint-library work are indistinguishable from outside
-the application. In a two-day baseline, 70% of working time landed in one
-unsplittable bucket.
+symbol-library and footprint-library work look identical from outside the
+application. In a two-day baseline with a title-only tracker, 70% of working
+time landed in one unsplittable bucket.
 
-pcbtrack reads **Altium's own Auto Save recovery files** instead, whose
-extension (`.SchDoc` / `.PcbDoc` / `.SchLib` / `.PcbLib`) identifies the work.
-See [docs/02-stage-detection.md](docs/02-stage-detection.md).
+pcbtrack reads the **active document out of Altium's child windows** - the
+`TdxTabSheet` caption holds `[1] ESC_PCB.SchDoc`, `ESC_Board.PcbDoc` and so on
+- with plain Win32 calls. No UI Automation, no COM, no Altium plugin. Altium's
+Auto Save recovery files corroborate it and prove that editing (not just
+viewing) happened. Confirmed by probe against Altium Designer 26.7.1:
+[docs/09-probe-2026-10-24.md](docs/09-probe-2026-10-24.md),
+[docs/02-stage-detection.md](docs/02-stage-detection.md).
 
 ## Install (Windows)
 
 1. Install Python 3.8+ from python.org, ticking **Add Python to PATH**.
 2. Download or clone this folder.
-3. **Turn Altium Auto Save on** - without it, stages cannot be separated:
-   *Preferences -> Data Management -> Backup*: Auto Save **every 2 minutes**,
-   versions to keep **10**.
+3. Recommended: turn Altium Auto Save on - *Preferences -> Data Management ->
+   Backup*, every **2 minutes**, keep **10** versions. Stage detection works
+   without it, but Auto Save distinguishes editing from viewing and is a
+   genuine crash safety net.
 4. Double-click `install.bat`. It checks the setup and starts tracking at login.
 5. Double-click `dashboard.bat` to see your day.
 
@@ -53,14 +58,18 @@ python -m pcbtrack probe       inspect what Altium exposes on your machine
 python -m pcbtrack selfcheck   append a line to perf.log for weekly review
 ```
 
-The dashboard shows the full 24 hours, the breakdown by project / stage /
-software / document, a review queue of the blocks it is unsure about, and a
-box for a short note on what you actually got done.
+The dashboard shows a **live strip** of what you are doing right now
+(refreshed every 5 s from a 291-byte endpoint), the full 24 hours, the
+breakdown by project / stage / software / document, a review queue of the
+blocks it is unsure about, and a box for a short note on what you actually got
+done. One client job can hold several Altium projects, grouped with the
+"Groups under" dropdown, and library + footprint + component-search time can
+be merged into one report line with a checkbox.
 
 ## Status
 
-v0.1.0, early. The pipeline is tested against a synthetic workday
-(`python tests/replay_day.py`, 20 checks). The Altium dialog dictionary is
+v0.2.0, early. The pipeline is tested against a synthetic workday
+(`python tests/replay_day.py`, 24 checks). The Altium dialog dictionary is
 partly verified: entries are marked `OBSERVED` or `UNVERIFIED` in
 `pcbtrack/rules_default.py`. Open questions are in
 [docs/08-open-questions.md](docs/08-open-questions.md).

@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS clients(
 CREATE TABLE IF NOT EXISTS projects(
   id TEXT PRIMARY KEY, name TEXT, client_id TEXT,
   status TEXT,                      -- proposed | active | hold | closed
-  created REAL);
+  created REAL,
+  parent_id TEXT);                   -- one client job, several Altium projects
 CREATE TABLE IF NOT EXISTS aliases(
   id INTEGER PRIMARY KEY, project_id TEXT, pattern TEXT, kind TEXT);
 CREATE TABLE IF NOT EXISTS notes(
@@ -55,8 +56,12 @@ def connect(path):
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA synchronous=NORMAL")
     c.executescript(SCHEMA)
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(projects)")}
+    if "parent_id" not in cols:
+        # one client job can hold several Altium projects (main board + test jig)
+        c.execute("ALTER TABLE projects ADD COLUMN parent_id TEXT")
     if first:
-        c.execute("INSERT OR IGNORE INTO meta VALUES('schema','1')")
+        c.execute("INSERT OR IGNORE INTO meta(k,v) VALUES('schema','1')")
     c.commit()
     return c
 
@@ -72,8 +77,8 @@ def meta_get(c, k, default=None):
 
 
 def meta_set(c, k, v):
-    c.execute("INSERT INTO meta VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
-              (k, str(v)))
+    c.execute("INSERT INTO meta(k,v) VALUES(?,?)"
+              " ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, str(v)))
 
 
 # ---------- observations ----------
@@ -162,7 +167,8 @@ def ensure_client(c, name):
     if r:
         return r["id"]
     cid = new_id("cl")
-    c.execute("INSERT INTO clients VALUES(?,?,?)", (cid, name, time.time()))
+    c.execute("INSERT INTO clients(id,name,created) VALUES(?,?,?)",
+              (cid, name, time.time()))
     return cid
 
 
@@ -179,7 +185,8 @@ def propose_project(c, name, client_id=None):
         except re.error:
             pass
     pid = new_id("pj")
-    c.execute("INSERT INTO projects VALUES(?,?,?,?,?)",
+    c.execute("INSERT INTO projects(id,name,client_id,status,created)"
+              " VALUES(?,?,?,?,?)",
               (pid, name, client_id, "proposed", time.time()))
     c.execute("INSERT INTO aliases(project_id,pattern,kind) VALUES(?,?,?)",
               (pid, re.escape(name), "auto"))
@@ -206,6 +213,26 @@ def rename_project(c, pid, name):
 
 def project_names(c):
     return {r["id"]: r["name"] for r in c.execute("SELECT id,name FROM projects")}
+
+
+def project_parents(c):
+    """child project id -> parent project id, for report roll-up."""
+    try:
+        return {r["id"]: r["parent_id"] for r in
+                c.execute("SELECT id,parent_id FROM projects WHERE parent_id IS NOT NULL")}
+    except Exception:
+        return {}
+
+
+def roll_up(pid, parents, depth=4):
+    seen = set()
+    while pid in parents and parents[pid] and depth > 0:
+        if pid in seen:
+            break
+        seen.add(pid)
+        pid = parents[pid]
+        depth -= 1
+    return pid
 
 
 # ---------- labels ----------

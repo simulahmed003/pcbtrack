@@ -28,10 +28,46 @@ def load_day(conn, cfg, day, now=None, backfill=True):
     return iv, t0, t1
 
 
+def now_snapshot(conn, cfg):
+    """Tiny payload for the live view - a few hundred bytes, read from the
+    last couple of rows rather than a whole-day rebuild."""
+    import time as _t
+    r = conn.execute(
+        "SELECT o.t0,o.t1,o.state,o.app,o.title,l.stage,l.doc,l.project_id,"
+        "       l.confidence,l.reason"
+        "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"
+        " ORDER BY o.t1 DESC LIMIT 1").fetchone()
+    hb = store.meta_get(conn, "heartbeat")
+    names = store.project_names(conn)
+    if not r:
+        return {"live": False, "heartbeat_age": None}
+    age = _t.time() - float(hb) if hb else None
+    t0, t1 = sessionize.day_window(dt.date.today(), cfg["day_cutover_hour"])
+    tot = conn.execute(
+        "SELECT COALESCE(SUM(MIN(o.t1,?)-MAX(o.t0,?)),0) s FROM obs o"
+        " WHERE o.state='work' AND o.t1>=? AND o.t0<?",
+        (min(t1, _t.time()), t0, t0, t1)).fetchone()["s"]
+    return {
+        "live": age is not None and age < cfg["tick_seconds"] * 4,
+        "heartbeat_age": round(age, 1) if age is not None else None,
+        "state": r["state"], "app": r["app"],
+        "stage": r["stage"], "doc": r["doc"],
+        "project": names.get(r["project_id"], ""),
+        "confidence": round(r["confidence"] or 0, 2),
+        "reason": r["reason"] or "",
+        "since": r["t0"], "work_today_s": max(0.0, tot),
+    }
+
+
 def summary(conn, cfg, day, now=None):
     iv, t0, t1 = load_day(conn, cfg, day, now)
     names = store.project_names(conn)
+    parents = store.project_parents(conn) if cfg.get(
+        "roll_up_subprojects_in_report", True) else {}
     work = [x for x in iv if x["state"] == "work"]
+
+    def proj_of(x):
+        return store.roll_up(x["project_id"], parents) if parents else x["project_id"]
     by_state = sessionize.rollup(iv, lambda x: x["state"])
     merge = cfg.get("merge_library_stages_in_report")
 
@@ -57,7 +93,7 @@ def summary(conn, cfg, day, now=None):
         "unassigned_s": unassigned,
         "by_stage": sessionize.rollup(work, stage_of),
         "by_project": {names.get(k, "(unassigned)"): v for k, v in
-                       sessionize.rollup(work, lambda x: x["project_id"]).items()},
+                       sessionize.rollup(work, proj_of).items()},
         "by_app": sessionize.rollup(work, lambda x: x["app"] or "(none)"),
         "by_doc": sessionize.rollup(work, lambda x: x["doc"]),
         "notes": [{"project": names.get(n["project_id"], ""), "text": n["text"]} for n in notes],

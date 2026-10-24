@@ -31,3 +31,33 @@ Known limits
 - Browser tracking sees the active tab title only; no URL, no extension.
 - Lock detection uses `OpenInputDesktop`; sleep and shutdown are inferred
   from heartbeat gaps rather than Windows power events.
+
+## 0.2.0 - 2026-10-24
+
+The probe paid off: Altium's active document turns out to be readable after
+all, which changes the primary signal and removes the Auto Save dependency
+for stage detection.
+
+Added
+- `pcbtrack/altium.py`: reads the ACTIVE DOCUMENT from Altium's child windows
+  (`TdxTabSheet` / `TViewComponent` captions, plus the visible
+  `T*View_GraphicalForm`) with plain Win32 - no UI Automation, no COM, no
+  plugin. Confirmed against a real probe of Altium Designer 26.7.1.
+  Consequence: **viewing** is now tracked, not only editing, and all four
+  stages separate instantly.
+- Sub-project grouping: `projects.parent_id`, report roll-up, and a
+  "Groups under" dropdown, so one client job can hold several Altium projects.
+- Live view: `/api/now`, a 291-byte payload polled every 5 s, with a strip
+  showing current stage, document, project and today's total.
+- A dashboard checkbox that merges library + footprint + component search into
+  one `library_management` report line, without changing what is recorded.
+- `/api/setting` for the two presentation switches.
+- Four more checks in the replay test, covering the active-document signal.
+
+Changed
+- Ladder order: dialog > active document > caption extension > Auto Save.
+  A dialog still wins because it says what you are doing *to* the document.
+- A dialog label now keeps the document name underneath it.
+- Auto Save is recommended rather than required; it corroborates editing.
+- Every INSERT names its columns (a positional one broke on the `parent_id`
+  migration).

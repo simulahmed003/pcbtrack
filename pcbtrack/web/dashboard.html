@@ -30,6 +30,11 @@ button.s{padding:4px 8px;font-size:12px}
 .warn{color:#b45309}dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(720px,93vw)}
 textarea{width:100%;min-height:70px}pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);padding:10px;border-radius:8px;max-height:320px;overflow:auto}
 .muted{color:var(--mut)}
+#live{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-left:3px solid var(--acc);padding-left:12px}
+#live b{font-size:16px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%}
+.beat{background:#22c55e;animation:pulse 2s infinite}@keyframes pulse{50%{opacity:.25}}
+.cold{background:var(--mut)}
+label.sw{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mut);cursor:pointer}
 </style></head><body><div class="wrap">
 <header>
   <div><h1>pcbtrack</h1><div class="sub" id="sub">local only &middot; nothing uploaded</div></div>
@@ -41,6 +46,14 @@ textarea{width:100%;min-height:70px}pre{white-space:pre-wrap;font:12px/1.5 ui-mo
     <button class="s p" id="exp">Export</button>
   </div>
 </header>
+
+<div class="card"><div id="live"><span class="dot cold" id="beat"></span>
+  <div><div class="sub">right now</div><b id="lnow">&mdash;</b></div>
+  <div><div class="sub">document</div><b id="ldoc">&mdash;</b></div>
+  <div><div class="sub">project</div><b id="lproj">&mdash;</b></div>
+  <div><div class="sub">worked today</div><b id="ltot">&mdash;</b></div>
+  <div class="sub" id="lwhy" style="flex:1 1 180px"></div>
+</div></div>
 
 <div class="card"><div class="kpis" id="kpis"></div></div>
 
@@ -56,7 +69,10 @@ textarea{width:100%;min-height:70px}pre{white-space:pre-wrap;font:12px/1.5 ui-mo
 </div>
 
 <div class="two">
-  <div class="card"><h2>By work stage</h2><div id="stage"></div></div>
+  <div class="card"><h2>By work stage</h2>
+    <label class="sw" style="margin:-4px 0 8px"><input type="checkbox" id="mergeLib">
+      merge library + footprint + component search into one line</label>
+    <div id="stage"></div></div>
   <div class="card"><h2>By project</h2><div id="proj"></div></div>
 </div>
 <div class="two">
@@ -126,21 +142,36 @@ function drawReview(){
 }
 
 function drawProjects(){
-  $('projects').innerHTML='<tr><th>Project</th><th>Client</th><th>Status</th><th></th></tr>'+
+  $('projects').innerHTML='<tr><th>Project</th><th>Client</th><th>Status</th><th>Groups under</th><th></th></tr>'+
   D.projects.map(p=>`<tr data-id="${p.id}">
     <td><input class="pn" value="${esc(p.name)}" style="width:100%"></td>
     <td><input class="pc" value="${esc(p.client||'')}" placeholder="client" style="width:100%"></td>
     <td><select class="ps">${['proposed','active','hold','closed'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td><select class="pp"><option value="">(top level)</option>${
+      D.projects.filter(q=>q.id!==p.id).map(q=>`<option value="${q.id}">under ${esc(q.name)}</option>`).join('')}</select></td>
     <td><button class="s ok">Save</button></td></tr>`).join('')
-    ||'<tr><td class="muted">No project seen yet. One appears as soon as a CAD file is open.</td></tr>';
+    ||'<tr><td colspan="5" class="muted">No project seen yet. One appears as soon as a CAD file is open.</td></tr>';
   D.projects.forEach(p=>{const tr=$('projects').querySelector(`tr[data-id="${p.id}"]`);
+    tr.querySelector('.pp').value=p.parent_id||'';
     tr.querySelector('.ok').onclick=async()=>{
       await post('/api/project',{id:p.id,name:tr.querySelector('.pn').value,
-        client:tr.querySelector('.pc').value,status:tr.querySelector('.ps').value});
+        client:tr.querySelector('.pc').value,status:tr.querySelector('.ps').value,
+        parent_id:tr.querySelector('.pp').value||null});
       load()}})
 }
 
 async function post(u,b){const r=await fetch(u,{method:'POST',body:JSON.stringify(b)});return r.json()}
+
+async function tick(){
+  let n; try{ n=await (await fetch('/api/now')).json() }catch(e){ return }
+  $('beat').className='dot '+(n.live?'beat':'cold');
+  const st=n.state==='work'?(n.stage||'working'):(n.state||'-');
+  $('lnow').textContent=n.live?st:(n.heartbeat_age==null?'not tracking':'stale '+F(n.heartbeat_age));
+  $('ldoc').textContent=n.doc||(n.app||'\u2014');
+  $('lproj').textContent=n.project||'\u2014';
+  $('ltot').textContent=F(n.work_today_s||0);
+  $('lwhy').textContent=n.live&&n.reason?n.reason+(n.confidence?`  (confidence ${n.confidence})`:''):'';
+}
 
 async function load(){
   D=await (await fetch('/api/day?date='+$('date').value)).json();
@@ -156,6 +187,7 @@ async function load(){
   bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app); bars('doc',D.by_doc);
   $('noteProj').innerHTML='<option value="">(no project)</option>'+
     D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  $('mergeLib').checked=!!D.merge_library;
   $('notes').innerHTML=(D.notes||[]).map(n=>
     `<div style="border-top:1px solid var(--line);padding:6px 0">${n.project?`<b>${esc(n.project)}</b> &mdash; `:''}${esc(n.text)}</div>`).join('');
 }
@@ -168,8 +200,13 @@ $('dclose').onclick=()=>$('dlg').close();
 $('noteAdd').onclick=async()=>{const t=$('noteText').value.trim();if(!t)return;
   await post('/api/note',{day:$('date').value,project_id:$('noteProj').value||null,text:t});
   $('noteText').value='';load()};
+$('mergeLib').onchange=async e=>{
+  await post('/api/setting',{key:'merge_library_stages_in_report',value:e.target.checked});
+  load()};
 $('date').onchange=load;
 $('prev').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()-1);$('date').value=d.toISOString().slice(0,10);load()};
 $('next').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()+1);$('date').value=d.toISOString().slice(0,10);load()};
-load(); setInterval(load,120000);
+load(); tick();
+setInterval(tick,5000);    // live strip: a few hundred bytes
+setInterval(load,60000);   // full day rebuild
 </script></body></html>

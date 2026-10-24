@@ -10,5 +10,5 @@ probe_*.json
 reports/
 .vscode/
 .idea/
-pcbtrack.tgz
-.writetest
+docs/probe-*.json
+probe_*.json

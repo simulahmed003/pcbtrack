@@ -5,14 +5,16 @@ It is never presented as fact: the daily review is where it becomes
 confirmed, and a human label is never overwritten by automation.
 
 Signal ladder, strongest first:
-  1. a confirmed/manual label                 (handled in store.put_label)
+  1. a confirmed/manual label           (enforced in store.put_label)
   2. a learned correction rule
-  3. Altium Auto Save / History file evidence within the window  -> doctype
-  4. a document extension visible in the window title
-  5. a modal dialog caption
-  6. app / domain rules (LCSC, PDF, Zoom, ...)
-  7. sticky carry-over from the previous known stage
-  8. unknown  -> goes to the review queue, never silently assigned
+  3. an Altium dialog in the foreground (what you are doing TO the document)
+  4. the ACTIVE DOCUMENT read from Altium's child windows (pcbtrack/altium.py)
+     - names the document and its type, and sees viewing, not just editing
+  5. a document extension visible in the window title
+  6. Altium Auto Save / History file evidence  -> doctype (proves editing)
+  7. app / domain rules (LCSC, PDF, Zoom, Excel, ...)
+  8. sticky carry-over from the previous known activity
+  9. unknown -> review queue, never silently assigned
 """
 import re, time
 from . import rules_default as RD
@@ -70,7 +72,7 @@ class Classifier:
         return r
 
     # ---------- main ----------
-    def label(self, t, app, title, wclass, state):
+    def label(self, t, app, title, wclass, state, sample=None):
         """-> dict(project_id, stage, doc, confidence, source, reason)"""
         out = {"project_id": None, "stage": None, "doc": None,
                "confidence": 0.0, "source": "auto", "reason": ""}
@@ -103,26 +105,44 @@ class Classifier:
                 out["reason"] = (out["reason"] + " title-project").strip()
         if not pid:
             pid = store.match_project(self.c, shown)
+        if not pid and sample is not None and getattr(sample, "doc", None):
+            pid = store.match_project(self.c, sample.doc)
 
         # --- stage ---
+        if is_dialog_pre(wclass, self.main_class) and is_altium_pre(appl, self.altium_procs):
+            for rx, stg, conf, ver in self.dialogs:
+                if rx.search(shown):
+                    # The dialog names the activity; the document underneath it
+                    # is still known, so keep it.
+                    out.update(stage=stg, confidence=conf,
+                               doc=getattr(sample, "doc", None),
+                               reason="dialog %r [%s]" % (shown[:40], ver))
+                    break
         if not out["stage"]:
             is_altium = appl in self.altium_procs
             is_dialog = bool(wclass) and wclass.lower() != self.main_class
-            # 3. a dialog open in the foreground is the most specific signal
-            #    there is - it outranks file evidence from minutes ago
-            if is_altium and is_dialog:
-                for rx, stg, conf, ver in self.dialogs:
-                    if rx.search(shown):
-                        out.update(stage=stg, confidence=conf,
-                                   reason="dialog %r [%s]" % (shown[:40], ver))
-                        break
-            # 4. a document extension visible in the title
+
+            # 2.5 THE ACTIVE DOCUMENT, read straight out of Altium's child
+            #     windows (pcbtrack/altium.py). This is the strongest automatic
+            #     signal: it names the open document and its type, and unlike
+            #     Auto Save it also sees plain viewing. A dialog still wins,
+            #     because a dialog says what you are doing to that document.
+            if sample is not None and getattr(sample, "doctype", None) \
+                    and not is_dialog:
+                st = self.doc2stage.get(sample.doctype)
+                if st:
+                    out.update(stage=st, doc=sample.doc, confidence=0.92,
+                               reason="active document %s [%s]" % (
+                                   sample.doc or sample.doctype,
+                                   sample.docsrc or "child window"))
+
+            # 3. a document extension visible in the title
             if not out["stage"]:
                 doc, dt = self.doc_from_title(shown)
                 if dt:
                     out.update(stage=self.doc2stage.get(dt), doc=doc,
                                confidence=0.75, reason="title doc " + doc)
-            # 5. Altium Auto Save / History evidence - this is what rescues
+            # 4. Altium Auto Save / History evidence - this is what rescues
             #    the bare "<project>.PrjPcb" title that reveals nothing
             if not out["stage"] and is_altium:
                 ev = self.recent_evidence(t, self.cfg["sticky_minutes"] * 60)
@@ -132,27 +152,27 @@ class Classifier:
                         out.update(stage=st, doc=ev["doc"], confidence=0.8,
                                    reason="autosave/%s %s%s" % (
                                        ev["kind"], ev["doc"], _ext(ev["doctype"])))
-            # 6. any other caption that matches a known dialog
+            # 5. any other caption that matches a known dialog
             if not out["stage"]:
                 for rx, stg, conf, ver in self.dialogs:
                     if rx.search(shown):
                         out.update(stage=stg, confidence=conf * 0.8,
                                    reason="caption %r" % shown[:40])
                         break
-            # 7. app / domain rules
+            # 6. app / domain rules
             if not out["stage"]:
                 for rx, stg, conf in self.apps:
                     if rx.search(hay):
                         out.update(stage=stg, confidence=conf, reason="app rule")
                         break
-            # 8. sticky carry-over
+            # 7. sticky carry-over
             if not out["stage"] and self.sticky:
                 sp, ss, stt = self.sticky
                 if t - stt <= self.cfg["sticky_minutes"] * 60:
                     out.update(stage=ss, confidence=0.35,
                                reason="carried from previous activity")
                     pid = pid or sp
-            # 9. give up honestly
+            # 8. give up honestly
             if not out["stage"]:
                 out.update(stage="unknown", confidence=0.0,
                            reason="no signal - needs review")
@@ -165,6 +185,14 @@ class Classifier:
         if out["project_id"] and out["stage"] not in ("unknown", None):
             self.sticky = (out["project_id"], out["stage"], t)
         return out
+
+
+def is_dialog_pre(wclass, main_class):
+    return bool(wclass) and wclass.lower() != main_class
+
+
+def is_altium_pre(appl, procs):
+    return appl in procs
 
 
 def _ext(dt):

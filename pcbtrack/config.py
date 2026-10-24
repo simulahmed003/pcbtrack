@@ -40,7 +40,9 @@ DEFAULTS = {
         "PCB": "routing",
         "SCHLIB": "library_symbol",
         "PCBLIB": "library_footprint",
+        "FAB": "fab_output",
     },
+    "roll_up_subprojects_in_report": True,
 }
 
 

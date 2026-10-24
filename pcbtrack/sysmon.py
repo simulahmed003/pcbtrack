@@ -11,7 +11,9 @@ A Replay backend lets the whole pipeline be tested off-Windows.
 """
 import sys, os, time, collections
 
-Sample = collections.namedtuple("Sample", "t app title wclass idle locked")
+Sample = collections.namedtuple(
+    "Sample", "t app title wclass idle locked doc doctype docsrc")
+Sample.__new__.__defaults__ = (None, None, None)
 
 
 class Replay:
@@ -20,16 +22,21 @@ class Replay:
     def __init__(self, script, t0=None):
         self.t = t0 or time.time()
         self.q = []
-        for secs, app, title, wclass, idle, locked in script:
-            self.q.append((secs, app, title, wclass, idle, locked))
+        for row in script:
+            secs, app, title, wclass, idle, locked = row[:6]
+            doc, doctype, docsrc = (list(row[6:]) + [None, None, None])[:3]
+            self.q.append((secs, app, title, wclass, idle, locked,
+                           doc, doctype, docsrc))
         self.i = 0
         self.left = self.q[0][0] if self.q else 0
 
     def __call__(self, tick=5):
         if self.i >= len(self.q):
             return None
-        secs, app, title, wclass, idle, locked = self.q[self.i]
-        s = Sample(self.t, app, title, wclass, idle, locked)
+        (secs, app, title, wclass, idle, locked,
+         doc, doctype, docsrc) = self.q[self.i]
+        s = Sample(self.t, app, title, wclass, idle, locked,
+                   doc, doctype, docsrc)
         self.t += tick
         self.left -= tick
         if self.left <= 0:
@@ -39,7 +46,7 @@ class Replay:
         return s
 
 
-def win_probe():
+def win_probe(altium_procs=("x2.exe", "dxp.exe")):
     import ctypes
     from ctypes import wintypes
     u32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -89,14 +96,26 @@ def win_probe():
                     if k32.QueryFullProcessImageNameW(ph, 0, pb, ctypes.byref(size)):
                         app = os.path.basename(pb.value)
                     k32.CloseHandle(ph)
-        return Sample(time.time(), app, title, wclass, idle, locked())
+        # Only for Altium: one EnumChildWindows pass to learn which document
+        # is actually open. The caption never says (see pcbtrack/altium.py).
+        doc = doctype = docsrc = None
+        if hwnd and app.lower() in altium_procs:
+            try:
+                from .altium import read_active_document
+                doc, doctype, docsrc = read_active_document(hwnd)
+            except Exception:
+                pass
+        return Sample(time.time(), app, title, wclass, idle, locked(),
+                      doc, doctype, docsrc)
 
     return probe
 
 
-def get_probe():
+def get_probe(cfg=None):
     if sys.platform == "win32":
-        return win_probe()
+        procs = tuple(p.lower() for p in
+                      (cfg or {}).get("altium", {}).get("processes", ["X2.EXE"]))
+        return win_probe(procs or ("x2.exe",))
     raise RuntimeError(
         "Live tracking needs Windows. Use the Replay backend for tests, "
         "or run 'pcbtrack probe' on the Windows machine.")
