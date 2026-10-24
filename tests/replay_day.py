@@ -310,6 +310,48 @@ def main():
     check("browser title cleaned",
           clean_title("ESE 4025 Study Pack and 4 more pages - Personal - Microsoft​ Edge")
           == "ESE 4025 Study Pack")
+    # split a row between two projects, then undo from either piece
+    other6 = store.create_project(c6, "Test jig")
+    own6 = c6.execute("SELECT id FROM projects WHERE name='ESC_Board_5Vbuck'").fetchone()[0]
+    row = [r for r in _rp.summary(c6, cfg6, day, now=start + 700)["cad"]["rows"]
+           if r["item"] == "ESC_Board.PcbDoc"][0]
+    tot = row["secs"]
+    _rp.split_row(c6, cfg6, day, row["ids"], [(own6, 100), (other6, 0)])
+    sp = [r for r in _rp.summary(c6, cfg6, day, now=start + 700)["cad"]["rows"]
+          if r["item"] == "ESC_Board.PcbDoc"]
+    by = {r["project"]: r["secs"] for r in sp}
+    check("split divides the row and keeps the total",
+          abs(by.get("ESC_Board_5Vbuck", 0) - 100) < 1 and abs(sum(by.values()) - tot) < 1, str(by))
+    jig = [r for r in sp if r["project"] == "Test jig"][0]
+    store.delete_splits(c6, jig["split_ids"])
+    back = [r for r in _rp.summary(c6, cfg6, day, now=start + 700)["cad"]["rows"]
+            if r["item"] == "ESC_Board.PcbDoc"]
+    check("undo from one piece restores the whole row",
+          len(back) == 1 and abs(back[0]["secs"] - tot) < 1 and not back[0].get("split_ids"),
+          str([(r["project"], r["secs"]) for r in back]))
+    ok6, g6, w6 = sessionize.check_invariant(report_load(c6, cfg6, day, start + 700)[0],
+                                             t0, t1, now=start + 700)
+    check("24h accounting exact after split and undo", ok6, "%.0fs vs %.0fs" % (g6, w6))
+
+    # danger zone: backup, delete project (time moves), client, stage, range
+    bk = store.backup(c6, tmp6)
+    check("backup written", os.path.getsize(bk) > 0)
+    cl = store.ensure_client(c6, "Acme")
+    c6.execute("UPDATE projects SET client_id=? WHERE id=?", (cl, other6))
+    store.delete_project(c6, own6, move_to=other6)
+    by9 = _rp.summary(c6, cfg6, day, now=start + 700)["by_project"]
+    check("deleting a project moves its time", list(by9) == ["Test jig"], str(by9))
+    store.delete_client(c6, cl)
+    check("deleting a client keeps its projects",
+          c6.execute("SELECT client_id FROM projects WHERE id=?", (other6,)).fetchone()[0] is None)
+    store.replace_stage(c6, "schematic", "study_existing")
+    bs9 = _rp.summary(c6, cfg6, day, now=start + 700)["by_stage"]
+    check("removing a stage relabels its time", "schematic" not in bs9 and bs9.get("study_existing", 0) > 0,
+          str(bs9))
+    t0d, t1d = sessionize.day_window(day)
+    store.delete_range(c6, t0d, t1d)
+    sm9 = _rp.summary(c6, cfg6, day, now=start + 700)
+    check("deleting a day removes its work", sm9["work_s"] == 0, "%.0fs" % sm9["work_s"])
     c6.close()
 
     print("\n%d check(s) failed" % len(FAILS))

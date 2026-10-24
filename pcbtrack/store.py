@@ -412,22 +412,31 @@ def manual_between(c, t0, t1):
                 (t0, t1))]
 
 
-def add_split(c, t0, t1, app, title, wclass, project_id, stage, doc):
+def add_split(c, t0, t1, app, title, wclass, project_id, stage, doc, group=""):
     """A piece of tracked time moved to a project by the user. Copies what
     was observed (app, title, document) so it still shows as Altium work."""
     cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
                     " VALUES(?,?,?,?,?,?,?)",
                     (t0, t1, "work", app, title, wclass, "split"))
     put_label(c, cur.lastrowid, project_id or None, stage, doc, 1.0,
-              "confirmed", "split by user")
+              "confirmed", "split by user #%s" % group)
     return cur.lastrowid
 
 
 def delete_splits(c, ids):
     """Undo splits: removes only 'split' overlay rows; what was tracked
-    underneath shows again."""
+    underneath shows again. Every piece made by the same split goes, so the
+    whole row comes back, not just the piece the button was on."""
     n = 0
-    for oid in ids:
+    groups = {r["reason"] for r in c.execute(
+        "SELECT l.reason FROM labels l JOIN obs o ON o.id=l.obs_id"
+        " WHERE o.collector='split' AND o.id IN (%s)" % ",".join("?" * len(ids)), list(ids))
+        if (r["reason"] or "").startswith("split by user #") and r["reason"] != "split by user #"}
+    if groups:
+        ids = list(ids) + [r["obs_id"] for r in c.execute(
+            "SELECT obs_id FROM labels WHERE reason IN (%s)" % ",".join("?" * len(groups)),
+            list(groups))]
+    for oid in dict.fromkeys(ids):
         r = c.execute("SELECT * FROM obs WHERE id=? AND collector='split'", (oid,)).fetchone()
         if r:
             audit(c, "delete_split:%s" % oid, dict(r), None)
@@ -449,3 +458,93 @@ def delete_manual(c, oid):
     c.execute("DELETE FROM obs WHERE id=?", (oid,))
     c.commit()
     return True
+
+
+# ---------- destructive actions (dashboard "Danger zone") ----------
+def backup(c, data_dir, keep=10):
+    """Copy the whole database before anything is deleted. Keeps the newest
+    `keep` copies in <data dir>/backups. Returns the backup path."""
+    d = os.path.join(data_dir, "backups")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, "activity-%s.db" % time.strftime("%Y%m%d-%H%M%S"))
+    dst = sqlite3.connect(path)
+    c.commit()
+    c.backup(dst)
+    dst.close()
+    old = sorted(f for f in os.listdir(d) if f.startswith("activity-") and f.endswith(".db"))
+    for f in old[:-keep]:
+        try:
+            os.remove(os.path.join(d, f))
+        except OSError:
+            pass
+    return path
+
+
+def delete_project(c, pid, move_to=None):
+    """Remove a project. Its time moves to `move_to`, or becomes unassigned;
+    the observed time itself is never deleted here."""
+    old = c.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+    if not old:
+        return False
+    move_to = move_to if move_to and move_to != pid else None
+    c.execute("UPDATE labels SET project_id=?, project_guess=0 WHERE project_id=?", (move_to, pid))
+    if move_to:
+        c.execute("UPDATE aliases SET project_id=? WHERE project_id=?", (move_to, pid))
+        c.execute("UPDATE doc_projects SET project_id=? WHERE project_id=?", (move_to, pid))
+    else:
+        c.execute("DELETE FROM aliases WHERE project_id=?", (pid,))
+        c.execute("DELETE FROM doc_projects WHERE project_id=?", (pid,))
+    c.execute("UPDATE projects SET parent_id=NULL WHERE parent_id=?", (pid,))
+    for n in c.execute("SELECT id,project_ids FROM notes WHERE project_id=? OR"
+                       " ','||COALESCE(project_ids,'')||',' LIKE ?",
+                       (pid, "%," + pid + ",%")).fetchall():
+        ids = [x for x in (n["project_ids"] or "").split(",") if x and x != pid]
+        if move_to and move_to not in ids:
+            ids.append(move_to)
+        c.execute("UPDATE notes SET project_ids=?, project_id=? WHERE id=?",
+                  (",".join(ids) or None, ids[0] if ids else None, n["id"]))
+    c.execute("DELETE FROM projects WHERE id=?", (pid,))
+    audit(c, "delete_project:" + pid, dict(old), {"time_moved_to": move_to})
+    c.commit()
+    return True
+
+
+def delete_client(c, cid):
+    """Remove a client; its projects stay, without a client."""
+    old = c.execute("SELECT * FROM clients WHERE id=?", (cid,)).fetchone()
+    if not old:
+        return False
+    c.execute("UPDATE projects SET client_id=NULL WHERE client_id=?", (cid,))
+    c.execute("DELETE FROM clients WHERE id=?", (cid,))
+    audit(c, "delete_client:" + cid, dict(old), None)
+    c.commit()
+    return True
+
+
+def replace_stage(c, stage, to="unknown"):
+    """Every block labelled `stage` gets `to` instead; learned rules too."""
+    n = c.execute("UPDATE labels SET stage=? WHERE stage=?", (to, stage)).rowcount
+    c.execute("UPDATE rules SET value=? WHERE field='stage' AND value=?", (to, stage))
+    audit(c, "replace_stage:" + stage, stage, {"to": to, "blocks": n})
+    c.commit()
+    return n
+
+
+def delete_range(c, t0, t1):
+    """Permanently delete everything recorded between t0 and t1: tracked
+    blocks, hand entries, splits, file evidence. Blocks that cross an edge
+    are trimmed, not removed."""
+    ids = [r["id"] for r in c.execute(
+        "SELECT id FROM obs WHERE t0>=? AND t1<=?", (t0, t1))]
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        q = ",".join("?" * len(part))
+        c.execute("DELETE FROM labels WHERE obs_id IN (%s)" % q, part)
+        c.execute("DELETE FROM obs WHERE id IN (%s)" % q, part)
+    c.execute("UPDATE obs SET t1=? WHERE t0<? AND t1>? AND t1<=?", (t0, t0, t0, t1))
+    c.execute("UPDATE obs SET t0=? WHERE t0>=? AND t0<? AND t1>?", (t1, t0, t1, t1))
+    ev = c.execute("DELETE FROM evidence WHERE t>=? AND t<?", (t0, t1)).rowcount
+    audit(c, "delete_range", None, {"t0": t0, "t1": t1, "blocks": len(ids), "evidence": ev})
+    c.commit()
+    return len(ids)
+

@@ -70,7 +70,13 @@ blocks it is unsure about, and a box for a short note on what you actually got
 done. Every work block gets a project: by file or title, by a shared word in
 the project name (`Buck converter` <- `Buck_Regulator.PcbDoc`), or, when
 nothing names one, a guess from the project you last worked on, shown in
-amber until you confirm or change it. One client job can hold several Altium projects, grouped with the
+amber until you confirm or change it.
+
+In the Altium table every document row shows **when** it happened, what was
+**detected** on screen (a fact), and a **work stage** and **project** you can
+change; a row can be **split** across projects and the split undone.
+Deleting projects, clients, stages or whole days lives in Settings ->
+Danger zone, behind typed confirmations and an automatic backup. One client job can hold several Altium projects, grouped with the
 "Groups under" dropdown, and library + footprint + component-search time can
 be merged into one report line with a checkbox.
 

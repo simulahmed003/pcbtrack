@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.8.0 - 2026-10-24
+Added
+- Danger zone (Settings, collapsed, red): delete a project (its time moves to
+  another project or becomes unassigned), delete a client (projects stay),
+  remove a work stage (built-in ones are hidden, custom ones removed; its
+  time moves to a stage you pick), delete all recorded data for a date
+  range. Each needs the exact name (or DELETE) typed, a second confirmation,
+  and writes a full database backup first (newest 10 kept in `backups/`).
+- Altium card is collapsible, and each project group inside the Altium and
+  Other software tables folds open/closed (remembered per browser).
+- Timeline zooms to the hours you actually worked; "full 24 h" switch.
+- KPIs grouped into Today / Accuracy / This week / Altium focus, with
+  explanations on hover; version shown in the header.
+
+## 0.7.0 - 2026-10-24
+Added
+- Project dropdown on every Altium / Other software row: moves the row.
+- Split a row between several projects (minutes per project; the last line
+  takes the rest). Implemented as 'split' overlays over the untouched tracked
+  rows; "undo split" removes every piece of that split.
+- "When" column: first-last time of each row.
+- Overlays (hand entries and splits): the newest wins.
+
 ## 0.6.0 - 2026-10-24
 See docs/10-version-analysis.md for the reasoning.
 

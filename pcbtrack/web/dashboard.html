@@ -14,6 +14,11 @@ h2{font-size:12px;margin:0 0 10px;color:var(--mut);text-transform:uppercase;lett
 h3{font-size:13px;margin:12px 0 4px}
 .kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .k b{display:block;font-size:22px;margin-top:2px}.k span{color:var(--mut);font-size:12px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.kg{border-left:2px solid var(--line);padding-left:12px}
+.kgt{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.kgi{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px}
+.kgi .k b{font-size:20px}
 .tl{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--off)}
 .tl i{display:block;height:100%}.ticks{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px}
 .row{display:grid;grid-template-columns:minmax(120px,190px) 1fr 70px;gap:8px;align-items:center;margin:6px 0}
@@ -50,10 +55,15 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
 .alt td{font-size:13px}.alt .st{display:inline-block;font-size:11px;border-radius:999px;padding:0 7px;margin:1px 3px 1px 0;color:#fff}
 .big{font-size:26px;font-weight:600}
 details.card summary{cursor:pointer;list-style:revert}
+details.danger{margin-top:16px;border:1px solid #dc2626;border-radius:10px;padding:10px 12px}
+details.danger summary{cursor:pointer;color:#dc2626;font-weight:600}
+.dz{border-top:1px solid var(--line);padding:10px 0}.dz .grid{margin-top:6px}
+button.warnb{background:#dc2626;color:#fff;border-color:#dc2626}
+tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(--mut)}tr.pgh.closed td:first-child::before{content:'\25B8  '}
 .item{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
 </style></head><body><div class="wrap">
 <header>
-  <div><h1>pcbtrack</h1><div class="sub" id="sub">local only &middot; nothing uploaded</div></div>
+  <div><h1>pcbtrack <span class="pill" id="ver"></span></h1><div class="sub" id="sub">local only &middot; nothing uploaded</div></div>
   <div class="flex">
     <button class="s" id="prev">&larr;</button>
     <input type="date" id="date">
@@ -80,8 +90,9 @@ details.card summary{cursor:pointer;list-style:revert}
 
 <div class="card"><div class="kpis" id="kpis"></div></div>
 
-<div class="card"><h2>Altium today</h2>
-  <div class="flex" style="gap:22px;margin-bottom:8px">
+<details class="card" id="altCard" open><summary><h2 style="display:inline">Altium today</h2>
+  <span class="sub" id="aSum"></span></summary>
+  <div class="flex" style="gap:22px;margin:8px 0">
     <div><div class="sub">time in Altium</div><div class="big" id="aTot">0m</div></div>
     <div><div class="sub">document switches</div><div class="big" id="aSw">0</div></div>
     <div style="flex:1 1 260px"><div class="sub">by work stage</div><div id="aStage"></div></div>
@@ -89,7 +100,7 @@ details.card summary{cursor:pointer;list-style:revert}
   <div class="sub" style="margin:4px 0 6px"><b>Detected</b> is what was on screen (a fact). <b>Work stage</b> is the tracker's guess
   <span class="pill gp">amber</span> until you pick one; picking relabels that whole row.</div>
   <div class="tw"><table class="alt" id="aDocs"></table></div>
-</div>
+</details>
 
 <details class="card" id="otherCard"><summary><h2 style="display:inline">Other software</h2>
   <span class="sub" id="oTot"></span></summary>
@@ -97,7 +108,8 @@ details.card summary{cursor:pointer;list-style:revert}
   <div class="tw"><table class="alt" id="oRows"></table></div>
 </details>
 
-<div class="card"><h2>The whole day, 24 hours</h2>
+<div class="card"><div class="flex" style="justify-content:space-between"><h2>Timeline</h2>
+  <label class="sw"><input type="checkbox" id="full24"> full 24 h</label></div>
   <div class="tl" id="tl"></div>
   <div class="sub" style="margin-top:6px">Altium / CAD only, coloured by work stage</div>
   <div class="lane" id="lane"></div><div class="ticks" id="ticks"></div>
@@ -183,6 +195,30 @@ details.card summary{cursor:pointer;list-style:revert}
   <div class="lab" style="margin-top:10px">Project folders, one per line &mdash; used to count file saves per document (optional)</div>
   <textarea id="sDirs" placeholder="D:\Altium\ESC_Board_5Vbuck"></textarea>
   <div class="flex" style="margin-top:8px"><button class="p" id="sSave">Save settings</button><span class="sub" id="sMsg"></span></div>
+
+  <details class="danger"><summary>Danger zone &mdash; delete projects, clients, work stages or data</summary>
+    <div class="sub" style="margin:8px 0">Each action asks you to type a confirmation, and the whole database is
+    backed up first (newest 10 backups kept in the <code>backups</code> folder next to your data).</div>
+    <div class="dz"><b>Delete a project</b>
+      <div class="grid"><label>Project<select id="dzProj"></select></label>
+        <label>Move its time to<select id="dzProjTo"></select></label>
+        <label>Type the project name<input id="dzProjOk" autocomplete="off"></label>
+        <button class="warnb" data-dz="delete_project">Delete project</button></div></div>
+    <div class="dz"><b>Delete a client</b> <span class="sub">its projects stay, without a client</span>
+      <div class="grid"><label>Client<select id="dzCli"></select></label>
+        <label>Type the client name<input id="dzCliOk" autocomplete="off"></label>
+        <button class="warnb" data-dz="delete_client">Delete client</button></div></div>
+    <div class="dz"><b>Remove a work stage</b> <span class="sub">from every list; its time moves to another stage</span>
+      <div class="grid"><label>Stage<select id="dzStage"></select></label>
+        <label>Move its time to<select id="dzStageTo"></select></label>
+        <label>Type the stage name<input id="dzStageOk" autocomplete="off"></label>
+        <button class="warnb" data-dz="delete_stage">Remove stage</button></div></div>
+    <div class="dz"><b>Delete recorded data</b> <span class="sub">everything tracked, entered or noted on these days &mdash; permanent</span>
+      <div class="grid"><label>From<input type="date" id="dzFrom"></label><label>To<input type="date" id="dzTo"></label>
+        <label>Type DELETE<input id="dzRangeOk" autocomplete="off"></label>
+        <button class="warnb" data-dz="delete_range">Delete data</button></div></div>
+    <div class="sub" id="dzMsg" style="margin-top:8px"></div>
+  </details>
 </div>
 
 <div class="card"><h2>Projects &amp; clients</h2>
@@ -258,16 +294,22 @@ function rowsTable(rows,saves,empty){
   let h=`<tr><th>When</th><th>${saves?'Document':'Page or window'}</th><th>Project</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
   rows.forEach((r,i)=>{
     if(r.project!==last){const pt=rows.filter(x=>x.project===r.project).reduce((x,y)=>x+y.secs,0);
-      h+=`<tr><td colspan="${nc-1}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
+      h+=`<tr class="pgh${COLL.has(r.project)?' closed':''}" data-g="${esc(r.project)}"><td colspan="${nc-1}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
     const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'';
-    h+=`<tr class="${r.confirmed?'':'guess'}"><td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
+    h+=`<tr class="${r.confirmed?'':'guess'}" data-in="${esc(r.project)}"${COLL.has(r.project)?' hidden':''}><td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
         <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}</div></td>
       <td><select class="rowproj projsel" data-i="${i}">${projOpts(pid)}</select></td>
       <td class="muted">${esc(r.detected)}</td>
       <td><select class="rs rowstage" data-i="${i}">${stageOpts(r.stage)}</select>${r.confirmed?'':' <span class="pill gp">guess</span>'}</td>
       ${saves?`<td class="n">${r.saves||''}</td>`:''}<td class="n">${F(r.secs)}</td></tr>`});
   return h}
+// collapsed project groups, remembered per browser
+const COLL=new Set((()=>{try{return JSON.parse(localStorage.getItem('pcbtrack.collapsed')||'[]')}catch(e){return []}})());
 function bindRows(tbl,rows){
+  tbl.querySelectorAll('tr.pgh').forEach(tr=>tr.onclick=()=>{const g=tr.dataset.g;
+    COLL.has(g)?COLL.delete(g):COLL.add(g); tr.classList.toggle('closed',COLL.has(g));
+    tbl.querySelectorAll('tr[data-in]').forEach(x=>{if(x.dataset.in===g)x.hidden=COLL.has(g)});
+    try{localStorage.setItem('pcbtrack.collapsed',JSON.stringify([...COLL]))}catch(e){}});
   tbl.querySelectorAll('.rowstage').forEach(sel=>sel.onchange=async()=>{
     if(sel.value===NEW)return;           // handled by the "+ new stage" listener
     await post('/api/label',{ids:rows[+sel.dataset.i].ids,stage:sel.value,source:'confirmed'}); load()});
@@ -297,9 +339,20 @@ function openSplit(r){SPLIT=r;
   const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'', half=Math.round(r.secs/120*10)/10;
   $('splitTitle').textContent=`Split ${r.item} (${F(r.secs)}) between projects`;
   $('splitLines').innerHTML=splitLine(pid,half)+splitLine('',0); splitTotal(); $('splitDlg').showModal()}
+function drawDanger(){
+  const pk=$('dzProj').value, ck=$('dzCli').value, sk=$('dzStage').value;
+  $('dzProj').innerHTML=D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  $('dzProjTo').innerHTML='<option value="">(leave unassigned)</option>'+D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  $('dzCli').innerHTML=(D.clients||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('dzStage').innerHTML=D.stages.filter(x=>x!=='unknown').map(x=>`<option>${x}</option>`).join('');
+  $('dzStageTo').innerHTML=D.stages.map(x=>`<option ${x==='unknown'?'selected':''}>${x}</option>`).join('');
+  if(pk)$('dzProj').value=pk; if(ck)$('dzCli').value=ck; if(sk)$('dzStage').value=sk;
+}
+
 function drawAltium(){
   const a=D.cad||{work_s:0,docs:{},by_stage:{}};
   $('aTot').textContent=F(a.work_s); $('aSw').textContent=a.switches||0;
+  $('aSum').textContent=' \u00b7 '+F(a.work_s)+' in '+(a.rows||[]).length+' row(s)';
   const tot=Math.max(1,a.work_s);
   $('aStage').innerHTML=Object.entries(a.by_stage).map(([k,v])=>
     `<span class="st" style="background:${stageCol(k)}">${esc(k)} ${F(v)}</span>`).join('')||'<span class="sub">no Altium time yet</span>';
@@ -312,8 +365,13 @@ function drawAltium(){
 }
 
 function drawTimeline(){
-  const tl=$('tl'), iv=D.timeline; if(!iv.length){tl.innerHTML='';return}
-  const a=iv[0].t0, b=iv[iv.length-1].t1, w=Math.max(1,b-a);
+  const tl=$('tl'); let iv=D.timeline; if(!iv.length){tl.innerHTML='';return}
+  let a=iv[0].t0, b=iv[iv.length-1].t1;
+  const on=iv.filter(x=>x.state!=='off');
+  if(!$('full24').checked&&on.length){        // zoom to the hours actually used
+    a=Math.max(a,on[0].t0-900); b=Math.min(b,on[on.length-1].t1+900);
+    iv=iv.filter(x=>x.t1>a&&x.t0<b).map(x=>({...x,t0:Math.max(x.t0,a),t1:Math.min(x.t1,b)}))}
+  const w=Math.max(1,b-a);
   tl.innerHTML=iv.map(x=>{const lab=x.state==='work'?`${x.stage||''} ${x.project||''} ${x.doc||''}`:x.state;
     const col=x.source==='manual'?'var(--man)':(x.state==='work'&&x.guess?'repeating-linear-gradient(45deg,var(--work) 0 4px,var(--guess) 4px 8px)':(SC[x.state]||'var(--off)'));
     return `<i title="${HH(x.t0)}-${HH(x.t1)} ${esc(lab)} (${F(x.t1-x.t0)})" style="width:${(x.t1-x.t0)/w*100}%;background:${col}"></i>`}).join('');
@@ -404,7 +462,7 @@ async function tick(){
   $('trk').textContent=n.running?'Stop tracking':'Start tracking';
   $('trk').className='s'+(n.running?'':' p');
   if(document.activeElement!==$('auto'))$('auto').checked=!!n.autostart;
-  $('ldoc').textContent=n.doc||(n.app||'—');
+  $('ldoc').textContent=n.doc||((n.app||'').replace(/\.exe$/i,'')||'—');
   $('lproj').textContent=n.project||'—';
   $('ltot').textContent=F(n.work_today_s||0);
   $('lcad').textContent=F(n.cad_today_s||0);
@@ -416,21 +474,25 @@ async function tick(){
 async function load(){
   D=await (await fetch('/api/day?date='+$('date').value)).json();
   if(D.error){$('sub').textContent='error: '+D.error;return}
+  $('ver').textContent='v'+(D.version||'');
   const st=D.states||{}, pct=D.work_s?Math.round(100*D.confirmed_s/D.work_s):0;
-  $('kpis').innerHTML=[
-    ['Worked',F(D.work_s)],['Idle (away from keys)',F(st.idle||0)],['Locked',F(st.locked||0)],
-    ['Not tracked (PC off / tracker off)',F(st.off||0)],['Confirmed or added by me',pct+'%'],
-    ['Stage unknown',F(D.unknown_s)],['Project guessed (check)',F(D.guessed_s||0)],
-    ['This week (from '+((D.week||{}).from||'').slice(5)+')',F((D.week||{}).work_s||0)],['Altium this week',F((D.week||{}).cad_s||0)],
-    ['Altium focus (share of work)',((D.cad||{}).focus_pct||0)+'%'],['Longest Altium stretch',F((D.cad||{}).longest_s||0)]
-  ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('')+
-  `<div class="k" style="grid-column:1/-1"><span>Daily target ${F(D.target_s||0)} &middot; ${D.target_s?Math.min(100,Math.round(100*D.work_s/D.target_s)):0}% done</span>
-   <div class="bar" style="margin-top:6px;height:10px"><i style="width:${D.target_s?Math.min(100,100*D.work_s/D.target_s):0}%"></i></div></div>`;
+  const wk=D.week||{}, cd=D.cad||{}, tp=D.target_s?Math.min(100,Math.round(100*D.work_s/D.target_s)):0;
+  const grp=(title,items)=>`<div class="kg"><div class="kgt">${title}</div><div class="kgi">${
+    items.map(([l,v,h])=>`<div class="k"${h?` title="${h}"`:''}><span>${l}</span><b>${v}</b></div>`).join('')}</div></div>`;
+  $('kpis').innerHTML=
+    grp('Today',[['Worked',F(D.work_s)],['In Altium',F(cd.work_s||0)],['Idle',F(st.idle||0),'no keyboard or mouse for 3+ minutes'],
+      ['Not tracked',F(st.off||0),'PC off, locked out or tracker stopped']])+
+    grp('Accuracy',[['Confirmed',pct+'%','share of work time you confirmed or entered'],['Stage unknown',F(D.unknown_s)],
+      ['Project guessed',F(D.guessed_s||0),'check these in the tables below']])+
+    grp('This week',[['Worked',F(wk.work_s||0),'since '+(wk.from||'')],['In Altium',F(wk.cad_s||0)]])+
+    grp('Altium focus',[['Share of work',(cd.focus_pct||0)+'%'],['Longest stretch',F(cd.longest_s||0),'breaks under 2 minutes do not end a stretch']])+
+    `<div class="kg" style="grid-column:1/-1"><div class="kgt">Daily target &middot; ${F(D.work_s)} of ${F(D.target_s||0)} (${tp}%)</div>
+     <div class="bar" style="height:10px"><i style="width:${tp}%"></i></div></div>`;
   if(document.activeElement!==$('sTarget'))$('sTarget').value=(D.target_s||0)/3600;
   if(document.activeElement!==$('sDirs'))$('sDirs').value=(D.project_dirs||[]).join('\n');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
-  drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
+  drawDanger(); drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
   bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app);
   const keepM=$('mProj').value, keepS=$('mStage').value;
   $('mProj').innerHTML=projOpts(keepM&&keepM!==NEW?keepM:'','(no project)');
@@ -500,6 +562,21 @@ $('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
 $('today').onclick=()=>setDay(ISO(new Date()));
 {const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
 $('cadOnly').onchange=()=>drawReview();
+document.querySelectorAll('[data-dz]').forEach(btn=>btn.onclick=async()=>{
+  const act=btn.dataset.dz; let body={action:act}, what='';
+  if(act==='delete_project'){body.id=$('dzProj').value;body.move_to=$('dzProjTo').value||null;body.confirm=$('dzProjOk').value;
+    what=`Delete project "${$('dzProj').selectedOptions[0]?.text}"? Its time ${body.move_to?'moves to "'+$('dzProjTo').selectedOptions[0].text+'"':'becomes unassigned'}.`}
+  if(act==='delete_client'){body.id=$('dzCli').value;body.confirm=$('dzCliOk').value;what=`Delete client "${$('dzCli').selectedOptions[0]?.text}"?`}
+  if(act==='delete_stage'){body.stage=$('dzStage').value;body.move_to=$('dzStageTo').value;body.confirm=$('dzStageOk').value;
+    what=`Remove stage "${body.stage}"? Its time becomes "${body.move_to}".`}
+  if(act==='delete_range'){body.from=$('dzFrom').value;body.to=$('dzTo').value||body.from;body.confirm=$('dzRangeOk').value;
+    if(!body.from){alert('Pick the days to delete');return}
+    what=`PERMANENTLY delete everything recorded from ${body.from} to ${body.to}?`}
+  if(!confirm(what+'\n\nA backup of the database is made first.'))return;
+  const r=await post('/api/danger',body);
+  if(r.ok){$('dzMsg').textContent='Done. Backup saved: '+r.backup;
+    ['dzProjOk','dzCliOk','dzStageOk','dzRangeOk'].forEach(i=>$(i).value='');load()}});
+$('full24').onchange=()=>drawTimeline();
 $('splitAdd').onclick=()=>{$('splitLines').insertAdjacentHTML('beforeend',splitLine('',0));splitTotal()};
 $('splitCancel').onclick=()=>$('splitDlg').close();
 $('splitSave').onclick=async()=>{

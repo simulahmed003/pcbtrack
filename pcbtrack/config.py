@@ -39,6 +39,8 @@ DEFAULTS = {
     ],
     # stages you add from the dashboard; appended to "stages"
     "custom_stages": [],
+    # built-in stages removed from the dashboard's lists
+    "hidden_stages": [],
     "merge_library_stages_in_report": False,
     "daily_target_hours": 5,
     "doctype_stage": {
@@ -96,7 +98,10 @@ def load():
 
 
 def all_stages(cfg):
-    out = list(cfg["stages"])
+    """Built-in stages minus the ones hidden in the Danger zone, plus your own.
+    'unknown' can never be removed."""
+    hidden = set(cfg.get("hidden_stages") or []) - {"unknown"}
+    out = [s for s in DEFAULTS["stages"] if s not in hidden]
     for s in cfg.get("custom_stages") or []:
         if s not in out:
             out.insert(len(out) - 1 if out and out[-1] == "unknown" else len(out), s)

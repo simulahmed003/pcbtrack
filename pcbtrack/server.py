@@ -57,6 +57,7 @@ class H(BaseHTTPRequestHandler):
                 s["clients"] = [dict(r) for r in c.execute("SELECT id,name FROM clients")]
                 s["stages"] = CFG["stages"]
                 s["generated"] = time.time()
+                s["version"] = __import__("pcbtrack").__version__
                 return self._send(200, s)
             if u.path == "/api/now":
                 from . import tracker
@@ -187,6 +188,8 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/split/undo":
                 n = store.delete_splits(c, [int(i) for i in body["ids"]])
                 return self._send(200, {"ok": True, "removed": n})
+            if u.path == "/api/danger":
+                return self._danger(c, body)
             if u.path == "/api/manual/delete":
                 ok = store.delete_manual(c, int(body["id"]))
                 return self._send(200 if ok else 404, {"ok": ok})
@@ -240,6 +243,61 @@ class H(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         except Exception as e:
             return self._send(400, {"error": str(e)})
+
+
+def _danger(self, c, body):
+    """Deleting things. Every action needs the exact confirmation text the
+    dashboard asked for, and backs up the database first."""
+    act = body.get("action")
+    confirm = (body.get("confirm") or "").strip()
+    if act == "delete_project":
+        r = c.execute("SELECT name FROM projects WHERE id=?", (body.get("id"),)).fetchone()
+        if not r or confirm != r["name"]:
+            return self._send(400, {"error": "type the project name exactly to confirm"})
+        bk = store.backup(c, CFG["_data_dir"])
+        store.delete_project(c, body["id"], body.get("move_to") or None)
+    elif act == "delete_client":
+        r = c.execute("SELECT name FROM clients WHERE id=?", (body.get("id"),)).fetchone()
+        if not r or confirm != r["name"]:
+            return self._send(400, {"error": "type the client name exactly to confirm"})
+        bk = store.backup(c, CFG["_data_dir"])
+        store.delete_client(c, body["id"])
+    elif act == "delete_stage":
+        st, to = body.get("stage"), body.get("move_to") or "unknown"
+        if st == "unknown" or st not in CFG["stages"] or to == st:
+            return self._send(400, {"error": "that stage cannot be removed"})
+        if confirm != st:
+            return self._send(400, {"error": "type the stage name exactly to confirm"})
+        bk = store.backup(c, CFG["_data_dir"])
+        store.replace_stage(c, st, to)
+        custom = [x for x in CFG.get("custom_stages") or [] if x != st]
+        hidden = list(CFG.get("hidden_stages") or [])
+        if st in config.DEFAULTS["stages"] and st not in hidden:
+            hidden.append(st)
+        config.save_user({"custom_stages": custom, "hidden_stages": hidden})
+        CFG["custom_stages"], CFG["hidden_stages"] = custom, hidden
+        CFG["stages"] = config.all_stages(CFG)
+    elif act == "delete_range":
+        if confirm != "DELETE":
+            return self._send(400, {"error": "type DELETE to confirm"})
+        d0 = dt.date.fromisoformat(body["from"])
+        d1 = dt.date.fromisoformat(body.get("to") or body["from"])
+        if d1 < d0:
+            d0, d1 = d1, d0
+        t0 = dt.datetime.combine(d0, dt.time(0)).timestamp()
+        t1 = dt.datetime.combine(d1 + dt.timedelta(days=1), dt.time(0)).timestamp()
+        bk = store.backup(c, CFG["_data_dir"])
+        n = store.delete_range(c, t0, t1)
+        c.execute("DELETE FROM notes WHERE day>=? AND COALESCE(day_to,day)<=?",
+                  (d0.isoformat(), d1.isoformat()))
+        c.commit()
+        return self._send(200, {"ok": True, "deleted_blocks": n, "backup": bk})
+    else:
+        return self._send(400, {"error": "unknown action"})
+    return self._send(200, {"ok": True, "backup": bk})
+
+
+H._danger = _danger
 
 
 def serve(cfg=None, open_browser=True):

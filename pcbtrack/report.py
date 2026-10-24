@@ -162,6 +162,7 @@ def split_row(conn, cfg, day, ids, parts):
         "SELECT id,app,title,wclass FROM obs WHERE id IN (%s)" % ",".join("?" * len(want)),
         list(want))}
     made = 0
+    group = "%d" % (__import__("time").time() * 1000)
     k, left = 0, alloc[0][1]
     for x in sel:
         a = x["t0"]
@@ -176,7 +177,7 @@ def split_row(conn, cfg, day, ids, parts):
             o = src.get(x["id"])
             store.add_split(conn, a, b, o["app"] if o else x["app"],
                             o["title"] if o else x["title"], o["wclass"] if o else "",
-                            alloc[k][0], x["stage"], x["doc"])
+                            alloc[k][0], x["stage"], x["doc"], group)
             made += 1
             left -= b - a
             a = b
