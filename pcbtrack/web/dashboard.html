@@ -1,0 +1,175 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pcbtrack</title><style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mut:#64707d;--line:#e3e7ec;--acc:#0f766e;
+--work:#0f766e;--idle:#f59e0b;--locked:#8b5cf6;--off:#cbd5e1}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1418;--card:#171e24;--ink:#e8edf2;--mut:#8b98a5;--line:#26303a;--acc:#2dd4bf;--off:#2a3540}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:14px/1.45 system-ui,Segoe UI,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 16px 56px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+h1{font-size:19px;margin:0}.sub{color:var(--mut);font-size:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+h2{font-size:12px;margin:0 0 10px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.k b{display:block;font-size:22px;margin-top:2px}.k span{color:var(--mut);font-size:12px}
+.tl{display:flex;height:30px;border-radius:7px;overflow:hidden;background:var(--off)}
+.tl i{display:block;height:100%}.ticks{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px}
+.row{display:grid;grid-template-columns:minmax(120px,190px) 1fr 70px;gap:8px;align-items:center;margin:6px 0}
+.bar{height:9px;background:var(--line);border-radius:5px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.row em{font-style:normal;color:var(--mut);text-align:right;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 5px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.two{display:grid;gap:12px;grid-template-columns:1fr 1fr}@media(max-width:780px){.two{grid-template-columns:1fr}}
+button,select,input,textarea{font:inherit;color:var(--ink);background:var(--card);
+border:1px solid var(--line);border-radius:8px;padding:7px 9px;max-width:100%}
+button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.s{padding:4px 8px;font-size:12px}
+.flex{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.warn{color:#b45309}dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(720px,93vw)}
+textarea{width:100%;min-height:70px}pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);padding:10px;border-radius:8px;max-height:320px;overflow:auto}
+.muted{color:var(--mut)}
+</style></head><body><div class="wrap">
+<header>
+  <div><h1>pcbtrack</h1><div class="sub" id="sub">local only &middot; nothing uploaded</div></div>
+  <div class="flex">
+    <button class="s" id="prev">&larr;</button>
+    <input type="date" id="date">
+    <button class="s" id="next">&rarr;</button>
+    <button class="s" id="md">Report</button>
+    <button class="s p" id="exp">Export</button>
+  </div>
+</header>
+
+<div class="card"><div class="kpis" id="kpis"></div></div>
+
+<div class="card"><h2>The whole day, 24 hours</h2>
+  <div class="tl" id="tl"></div><div class="ticks" id="ticks"></div>
+  <div class="sub" style="margin-top:9px" id="legend"></div>
+</div>
+
+<div class="card" id="reviewCard"><h2>Review &mdash; biggest uncertain blocks first</h2>
+  <div class="sub" style="margin-bottom:8px">The tracker guesses; you decide. Everything here stays
+  marked <em>auto</em> in reports until you confirm it.</div>
+  <table id="review"></table>
+</div>
+
+<div class="two">
+  <div class="card"><h2>By work stage</h2><div id="stage"></div></div>
+  <div class="card"><h2>By project</h2><div id="proj"></div></div>
+</div>
+<div class="two">
+  <div class="card"><h2>By software</h2><div id="app"></div></div>
+  <div class="card"><h2>By document</h2><div id="doc"></div></div>
+</div>
+
+<div class="two">
+  <div class="card"><h2>What I actually did today</h2>
+    <div class="sub" style="margin-bottom:8px">Optional. Goes into the daily report next to the hours.</div>
+    <select id="noteProj"></select>
+    <textarea id="noteText" placeholder="e.g. finished power stage schematic, made 3 footprints for the buck converter, started routing"></textarea>
+    <div class="flex" style="margin-top:8px"><button class="p" id="noteAdd">Add note</button></div>
+    <div id="notes" style="margin-top:10px"></div>
+  </div>
+  <div class="card"><h2>Projects &amp; clients</h2>
+    <div class="sub" style="margin-bottom:8px">Names are editable. History follows the project, so renaming is safe.</div>
+    <table id="projects"></table>
+  </div>
+</div>
+
+<dialog id="dlg"><h2 id="dt"></h2><pre id="dpre"></pre>
+  <div class="flex"><button class="p" id="dcopy">Copy</button><button id="dclose">Close</button></div>
+</dialog>
+</div><script>
+const $=i=>document.getElementById(i), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const F=s=>{const m=Math.round(s/60);return m>=60?`${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`:`${m}m`};
+const HH=t=>new Date(t*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+const SC={work:'var(--work)',idle:'var(--idle)',locked:'var(--locked)',off:'var(--off)'};
+let D=null, day=new Date().toISOString().slice(0,10);
+$('date').value=day;
+
+function bars(el,obj){const e=$(el);const tot=Math.max(1,...Object.values(obj));
+  e.innerHTML=Object.entries(obj).map(([k,v])=>`<div class="row"><span>${esc(k)}</span>
+  <div class="bar"><i style="width:${v/tot*100}%"></i></div><em>${F(v)}</em></div>`).join('')
+  ||'<div class="sub">nothing yet</div>'}
+
+function drawTimeline(){
+  const tl=$('tl'), iv=D.timeline; if(!iv.length){tl.innerHTML='';return}
+  const a=iv[0].t0, b=iv[iv.length-1].t1, w=Math.max(1,b-a);
+  tl.innerHTML=iv.map(x=>{const lab=x.state==='work'?`${x.stage||''} ${x.project||''}`:x.state;
+    return `<i title="${HH(x.t0)}-${HH(x.t1)} ${esc(lab)} (${F(x.t1-x.t0)})" style="width:${(x.t1-x.t0)/w*100}%;background:${SC[x.state]||'var(--off)'}"></i>`}).join('');
+  let t='';for(let i=0;i<=6;i++){t+=`<span>${HH(a+(b-a)*i/6)}</span>`}$('ticks').innerHTML=t;
+  $('legend').innerHTML=Object.entries(SC).map(([k,v])=>
+    `<span style="margin-right:14px"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${v};margin-right:5px"></i>${k} ${F(D.states[k]||0)}</span>`).join('');
+}
+
+function drawReview(){
+  const rows=D.review||[];
+  if(!rows.length){$('review').innerHTML='<tr><td class="muted">Nothing needs review. Every block is labelled with confidence.</td></tr>';return}
+  const stages=D.stages.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const projs=['<option value="">(unassigned)</option>'].concat(
+    D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`)).join('');
+  $('review').innerHTML='<tr><th>When</th><th>Length</th><th>What was on screen</th><th>Project</th><th>Stage</th><th></th></tr>'+
+    rows.map(r=>`<tr data-id="${r.id}">
+      <td>${HH(r.t0)}</td><td><b>${F(r.secs)}</b></td>
+      <td>${esc(r.app)}<div class="sub">${esc((r.title||'').slice(0,70))}${r.doc?` &middot; <span class="pill">${esc(r.doc)}</span>`:''}</div></td>
+      <td><select class="rp">${projs}</select></td>
+      <td><select class="rs">${stages}</select></td>
+      <td><button class="s p ok">Save</button></td></tr>`).join('');
+  rows.forEach(r=>{const tr=$('review').querySelector(`tr[data-id="${r.id}"]`);
+    tr.querySelector('.rp').value=r.project_id||''; tr.querySelector('.rs').value=r.stage||'unknown';
+    tr.querySelector('.ok').onclick=async()=>{
+      await post('/api/label',{ids:[r.id],project_id:tr.querySelector('.rp').value||null,
+        stage:tr.querySelector('.rs').value,source:'confirmed'});
+      tr.style.opacity=.4; tr.querySelector('.ok').textContent='saved'; load()}})
+}
+
+function drawProjects(){
+  $('projects').innerHTML='<tr><th>Project</th><th>Client</th><th>Status</th><th></th></tr>'+
+  D.projects.map(p=>`<tr data-id="${p.id}">
+    <td><input class="pn" value="${esc(p.name)}" style="width:100%"></td>
+    <td><input class="pc" value="${esc(p.client||'')}" placeholder="client" style="width:100%"></td>
+    <td><select class="ps">${['proposed','active','hold','closed'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td><button class="s ok">Save</button></td></tr>`).join('')
+    ||'<tr><td class="muted">No project seen yet. One appears as soon as a CAD file is open.</td></tr>';
+  D.projects.forEach(p=>{const tr=$('projects').querySelector(`tr[data-id="${p.id}"]`);
+    tr.querySelector('.ok').onclick=async()=>{
+      await post('/api/project',{id:p.id,name:tr.querySelector('.pn').value,
+        client:tr.querySelector('.pc').value,status:tr.querySelector('.ps').value});
+      load()}})
+}
+
+async function post(u,b){const r=await fetch(u,{method:'POST',body:JSON.stringify(b)});return r.json()}
+
+async function load(){
+  D=await (await fetch('/api/day?date='+$('date').value)).json();
+  const st=D.states||{}, pct=D.work_s?Math.round(100*D.confirmed_s/D.work_s):0;
+  $('kpis').innerHTML=[
+    ['Worked',F(D.work_s)],['Idle',F(st.idle||0)],['Locked',F(st.locked||0)],
+    ['PC off',F(st.off||0)],['Confirmed by me',pct+'%'],
+    ['Stage unknown',F(D.unknown_s)]
+  ].map(k=>`<div class="k"><span>${k[0]}</span><b>${k[1]}</b></div>`).join('');
+  $('sub').innerHTML='local only &middot; nothing uploaded'+
+    (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
+  drawTimeline(); drawReview(); drawProjects();
+  bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app); bars('doc',D.by_doc);
+  $('noteProj').innerHTML='<option value="">(no project)</option>'+
+    D.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  $('notes').innerHTML=(D.notes||[]).map(n=>
+    `<div style="border-top:1px solid var(--line);padding:6px 0">${n.project?`<b>${esc(n.project)}</b> &mdash; `:''}${esc(n.text)}</div>`).join('');
+}
+function show(t,x){$('dt').textContent=t;$('dpre').textContent=x;$('dlg').showModal()}
+$('md').onclick=async()=>show('Daily report (markdown)',await (await fetch('/api/markdown?date='+$('date').value)).text());
+$('exp').onclick=async()=>{const r=await (await fetch('/api/export?date='+$('date').value)).json();
+  show('Exported',`Wrote:\n${r.base}.md\n${r.base}.csv\n${r.base}.json`)};
+$('dcopy').onclick=()=>navigator.clipboard?.writeText($('dpre').textContent);
+$('dclose').onclick=()=>$('dlg').close();
+$('noteAdd').onclick=async()=>{const t=$('noteText').value.trim();if(!t)return;
+  await post('/api/note',{day:$('date').value,project_id:$('noteProj').value||null,text:t});
+  $('noteText').value='';load()};
+$('date').onchange=load;
+$('prev').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()-1);$('date').value=d.toISOString().slice(0,10);load()};
+$('next').onclick=()=>{const d=new Date($('date').value);d.setDate(d.getDate()+1);$('date').value=d.toISOString().slice(0,10);load()};
+load(); setInterval(load,120000);
+</script></body></html>

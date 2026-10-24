@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy of the built-in defaults. Your edits live in the data folder's config.json; only the keys you change need to be there.",
+  "tick_seconds": 5,
+  "idle_seconds": 180,
+  "thinking_grace_seconds": 300,
+  "scan_seconds": 60,
+  "sticky_minutes": 10,
+  "port": 8765,
+  "daily_target_hours": 5,
+  "merge_library_stages_in_report": false,
+  "project_dirs": [],
+  "private_title_patterns": ["(?i)incognito", "(?i)inprivate", "(?i)\\bbank\\b", "(?i)password", "(?i)facebook", "(?i)messenger", "(?i)whatsapp"]
+}

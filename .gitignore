@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+data/
+portable.flag
+*.db
+*.db-wal
+*.db-shm
+perf.log
+probe_*.json
+reports/
+.vscode/
+.idea/
+pcbtrack.tgz
+.writetest
