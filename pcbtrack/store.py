@@ -167,7 +167,7 @@ def close_open_intervals(c, tick):
         return 0
     hb = float(hb)
     n = c.execute("UPDATE obs SET t1=? WHERE t1>? AND t0<=?"
-                  " AND COALESCE(collector,'')<>'manual'", (hb, hb, hb)).rowcount
+                  " AND COALESCE(collector,'') NOT IN ('manual','split')", (hb, hb, hb)).rowcount
     c.commit()
     return n
 
@@ -410,6 +410,32 @@ def manual_between(c, t0, t1):
                 " LEFT JOIN labels l ON l.obs_id=o.id"
                 " WHERE o.collector='manual' AND o.t1>? AND o.t0<? ORDER BY o.t0",
                 (t0, t1))]
+
+
+def add_split(c, t0, t1, app, title, wclass, project_id, stage, doc):
+    """A piece of tracked time moved to a project by the user. Copies what
+    was observed (app, title, document) so it still shows as Altium work."""
+    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
+                    " VALUES(?,?,?,?,?,?,?)",
+                    (t0, t1, "work", app, title, wclass, "split"))
+    put_label(c, cur.lastrowid, project_id or None, stage, doc, 1.0,
+              "confirmed", "split by user")
+    return cur.lastrowid
+
+
+def delete_splits(c, ids):
+    """Undo splits: removes only 'split' overlay rows; what was tracked
+    underneath shows again."""
+    n = 0
+    for oid in ids:
+        r = c.execute("SELECT * FROM obs WHERE id=? AND collector='split'", (oid,)).fetchone()
+        if r:
+            audit(c, "delete_split:%s" % oid, dict(r), None)
+            c.execute("DELETE FROM labels WHERE obs_id=?", (oid,))
+            c.execute("DELETE FROM obs WHERE id=?", (oid,))
+            n += 1
+    c.commit()
+    return n
 
 
 def delete_manual(c, oid):

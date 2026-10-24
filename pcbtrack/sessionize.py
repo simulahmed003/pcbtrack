@@ -7,6 +7,7 @@ Nothing is double counted; a second belongs to one state and one project.
 import datetime as dt
 
 STATES = ("work", "idle", "locked", "off")
+OVERLAYS = ("manual", "split")
 
 
 def day_window(day, cutover=0):
@@ -22,6 +23,7 @@ def _row(r, a, b):
         "confidence": r["confidence"] or 0.0, "source": r["source"] or "auto",
         "guess": r["project_guess"] or 0,
         "reason": r["reason"] if "reason" in r.keys() else "",
+        "collector": r["collector"] if "collector" in r.keys() else None,
     }
 
 
@@ -39,8 +41,12 @@ def intervals(conn, t0, t1, join_gap=11.0):
     look at a schematic counted 0 s and never showed up (fixed 2026-10-24).
     A longer gap is a real outage and stays uncovered.
 
-    Hand-entered rows (collector 'manual') beat tracked time: "14:00-16:00
-    studying" replaces whatever the tracker guessed for those minutes."""
+    Overlay rows beat tracked time, and a newer overlay beats an older one:
+      'manual' - hand-entered: "14:00-16:00 studying"
+      'split'  - a piece of tracked time the user moved to another project
+                 (keeps the app, document and stage of what was tracked)
+    The tracked rows underneath are never changed, so an overlay can always
+    be removed to get back what was observed."""
     rows = conn.execute(
         "SELECT o.id,o.t0,o.t1,o.state,o.app,o.title,o.wclass,o.collector,"
         "       l.project_id,l.stage,l.doc,l.confidence,l.source,l.reason,"
@@ -48,8 +54,8 @@ def intervals(conn, t0, t1, join_gap=11.0):
         "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"
         " WHERE o.t1>=? AND o.t0<? ORDER BY o.t0, o.id",
         (t0 - join_gap, t1)).fetchall()
-    manual = [r for r in rows if r["collector"] == "manual"]
-    auto = [r for r in rows if r["collector"] != "manual"]
+    manual = sorted((r for r in rows if r["collector"] in OVERLAYS), key=lambda r: r["id"])
+    auto = [r for r in rows if r["collector"] not in OVERLAYS]
 
     out = []
     cursor = t0
@@ -67,14 +73,11 @@ def intervals(conn, t0, t1, join_gap=11.0):
     if not manual:
         return out
 
-    spans = []
-    mcur = t0
-    for r in manual:
-        a, b = max(r["t0"], t0, mcur), min(r["t1"], t1)
-        if b > a:
-            spans.append(_row(r, a, b))
-            mcur = b
-    for m in spans:
+    for r in manual:                      # oldest first, so the newest wins
+        a, b = max(r["t0"], t0), min(r["t1"], t1)
+        if b <= a:
+            continue
+        m = _row(r, a, b)
         cut = []
         for x in out:
             if x["t1"] <= m["t0"] or x["t0"] >= m["t1"]:
@@ -84,8 +87,8 @@ def intervals(conn, t0, t1, join_gap=11.0):
                 cut.append(dict(x, t1=m["t0"], secs=m["t0"] - x["t0"]))
             if x["t1"] > m["t1"]:
                 cut.append(dict(x, t0=m["t1"], secs=x["t1"] - m["t1"]))
+        cut.append(m)
         out = cut
-    out.extend(spans)
     out.sort(key=lambda x: x["t0"])
     return out
 

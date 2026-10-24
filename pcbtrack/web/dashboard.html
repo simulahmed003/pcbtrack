@@ -201,6 +201,12 @@ details.card summary{cursor:pointer;list-style:revert}
   </div>
 </div>
 
+<dialog id="splitDlg"><h2 id="splitTitle"></h2>
+  <div id="splitLines"></div>
+  <div class="flex" style="margin:6px 0"><button class="s" id="splitAdd">+ add project</button></div>
+  <div class="sub" id="splitInfo" style="margin-bottom:10px"></div>
+  <div class="flex"><button class="p" id="splitSave">Split</button><button id="splitCancel">Cancel</button></div>
+</dialog>
 <dialog id="dlg"><h2 id="dt"></h2><pre id="dpre"></pre>
   <div class="flex"><button class="p" id="dcopy">Copy</button><button id="dclose">Close</button></div>
 </dialog>
@@ -248,20 +254,49 @@ const SCOL={schematic:'#2563eb',library_symbol:'#7c3aed',library_footprint:'#c02
 const stageCol=s=>SCOL[s]||'#64748b';
 function rowsTable(rows,saves,empty){
   if(!rows.length)return `<tr><td class="muted">${empty}</td></tr>`;
-  let h=`<tr><th>Project / ${saves?'document':'page or window'}</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
+  const nc=saves?7:6;
+  let h=`<tr><th>When</th><th>${saves?'Document':'Page or window'}</th><th>Project</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
   rows.forEach((r,i)=>{
     if(r.project!==last){const pt=rows.filter(x=>x.project===r.project).reduce((x,y)=>x+y.secs,0);
-      h+=`<tr><td colspan="${saves?4:3}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
-    h+=`<tr class="${r.confirmed?'':'guess'}"><td>&nbsp;&nbsp;${esc(r.item)}</td><td class="muted">${esc(r.detected)}</td>
+      h+=`<tr><td colspan="${nc-1}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
+    const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'';
+    h+=`<tr class="${r.confirmed?'':'guess'}"><td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
+        <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}</div></td>
+      <td><select class="rowproj projsel" data-i="${i}">${projOpts(pid)}</select></td>
+      <td class="muted">${esc(r.detected)}</td>
       <td><select class="rs rowstage" data-i="${i}">${stageOpts(r.stage)}</select>${r.confirmed?'':' <span class="pill gp">guess</span>'}</td>
       ${saves?`<td class="n">${r.saves||''}</td>`:''}<td class="n">${F(r.secs)}</td></tr>`});
   return h}
 function bindRows(tbl,rows){
   tbl.querySelectorAll('.rowstage').forEach(sel=>sel.onchange=async()=>{
     if(sel.value===NEW)return;           // handled by the "+ new stage" listener
-    const r=rows[+sel.dataset.i];
-    await post('/api/label',{ids:r.ids,stage:sel.value,source:'confirmed'}); load()})}
+    await post('/api/label',{ids:rows[+sel.dataset.i].ids,stage:sel.value,source:'confirmed'}); load()});
+  tbl.querySelectorAll('.rowproj').forEach(sel=>sel.onchange=async()=>{
+    if(sel.value===NEW)return;
+    await post('/api/label',{ids:rows[+sel.dataset.i].ids,project_id:sel.value||null,source:'confirmed'}); load()});
+  tbl.querySelectorAll('.rowsplit').forEach(b=>b.onclick=()=>openSplit(rows[+b.dataset.i]));
+  tbl.querySelectorAll('.rowundo').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Undo the split for this row? The time goes back to what was tracked.'))return;
+    await post('/api/split/undo',{ids:rows[+b.dataset.i].split_ids}); load()});
+}
 
+// ---- split one row's time between projects ----
+let SPLIT=null;
+function splitLine(pid,min){return `<div class="flex sl" style="margin:4px 0">
+  <select class="slp projsel">${projOpts(pid,'(no project)')}</select>
+  <input class="slm" type="number" min="0" step="0.5" value="${min}" style="width:90px"> min
+  <button class="x slx">remove</button></div>`}
+function splitTotal(){const tot=SPLIT.secs/60, lines=[...$('splitLines').querySelectorAll('.sl')];
+  const used=lines.slice(0,-1).reduce((x,l)=>x+(+l.querySelector('.slm').value||0),0);
+  const last=lines[lines.length-1]; if(last){last.querySelector('.slm').value=Math.max(0,Math.round((tot-used)*10)/10);last.querySelector('.slm').disabled=true}
+  lines.slice(0,-1).forEach(l=>l.querySelector('.slm').disabled=false);
+  $('splitInfo').textContent=`Row total ${F(SPLIT.secs)}. The last line gets whatever is left. Earliest minutes go to the first line.`;
+  lines.forEach(l=>l.querySelector('.slx').onclick=()=>{if(lines.length>2){l.remove();splitTotal()}});
+  lines.forEach(l=>l.querySelector('.slm').oninput=splitTotal)}
+function openSplit(r){SPLIT=r;
+  const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'', half=Math.round(r.secs/120*10)/10;
+  $('splitTitle').textContent=`Split ${r.item} (${F(r.secs)}) between projects`;
+  $('splitLines').innerHTML=splitLine(pid,half)+splitLine('',0); splitTotal(); $('splitDlg').showModal()}
 function drawAltium(){
   const a=D.cad||{work_s:0,docs:{},by_stage:{}};
   $('aTot').textContent=F(a.work_s); $('aSw').textContent=a.switches||0;
@@ -465,6 +500,12 @@ $('prev').onclick=()=>shift(-1); $('next').onclick=()=>shift(1);
 $('today').onclick=()=>setDay(ISO(new Date()));
 {const t=ISO(new Date()); $('mDate').value=t; $('nFrom').value=t; $('rFrom').value=t; $('rTo').value=t}
 $('cadOnly').onchange=()=>drawReview();
+$('splitAdd').onclick=()=>{$('splitLines').insertAdjacentHTML('beforeend',splitLine('',0));splitTotal()};
+$('splitCancel').onclick=()=>$('splitDlg').close();
+$('splitSave').onclick=async()=>{
+  const parts=[...$('splitLines').querySelectorAll('.sl')].map(l=>({project_id:l.querySelector('.slp').value===NEW?null:(l.querySelector('.slp').value||null),minutes:+l.querySelector('.slm').value||0}));
+  const r=await post('/api/split',{date:$('date').value,ids:SPLIT.ids,parts});
+  $('splitDlg').close(); if(!r.ok)alert('Nothing was split'); load()};
 $('sSave').onclick=async()=>{
   const a=await post('/api/setting',{key:'daily_target_hours',value:+$('sTarget').value||0});
   const b=await post('/api/setting',{key:'project_dirs',value:$('sDirs').value.split(/\r?\n/)});
@@ -488,9 +529,9 @@ $('quit').onclick=async()=>{if(!confirm('Close the dashboard? Tracking keeps run
 // unsaved edits in the review or project tables pause the auto refresh
 let dirty=false;
 ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{
-  if(e.target.closest&&e.target.closest('#review,#projects'))dirty=true}));
+  if(e.target.closest&&e.target.closest('#review,#projects,#splitDlg'))dirty=true}));
 const _load=load; load=async()=>{dirty=false;return _load()};
 load(); tick();
 setInterval(tick,5000);    // live strip: a few hundred bytes
-setInterval(()=>{if(!dirty&&!$('dlg').open)load()},60000);   // full day rebuild
+setInterval(()=>{if(!dirty&&!$('dlg').open&&!$('splitDlg').open)load()},60000);   // full day rebuild
 </script></body></html>

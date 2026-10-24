@@ -126,16 +126,63 @@ def detail_rows(xs, cadset, names, proj_of, stage_of, saves=None):
                                   "stage": key[3], "secs": 0.0, "ids": [],
                                   "confirmed": True, "app": x["app"]})
         r["secs"] += x["secs"]
+        r["first"] = min(r.get("first", x["t0"]), x["t0"])
+        r["last"] = max(r.get("last", x["t1"]), x["t1"])
         if x["id"] is not None and x["id"] not in r["ids"]:
             r["ids"].append(x["id"])
         if x["source"] not in ("confirmed", "manual", "corrected"):
             r["confirmed"] = False
+        if x.get("collector") == "split":
+            r["split_ids"] = r.get("split_ids", []) + [x["id"]]
     out = sorted(rows.values(), key=lambda r: (r["project"] == "(unassigned)", r["project"], -r["secs"]))
     if saves is not None:
         for r in out:
             r["saves"] = saves.get((r["item"].rsplit(".", 1)[0].lower(),
                                     doctype_of(r["item"])), 0)
     return out
+
+
+def split_row(conn, cfg, day, ids, parts):
+    """Divide the time of one table row between projects.
+
+    parts: [(project_id, seconds), ...]; the last part takes whatever is left,
+    so the row total never changes. Time is handed out in time order: the
+    first part gets the earliest minutes. Each piece becomes a 'split'
+    overlay that copies the tracked app, document and stage."""
+    want = set(ids)
+    iv, _, _ = load_day(conn, cfg, day, backfill=False)
+    sel = sorted((x for x in iv if x["id"] in want and x["state"] == "work"),
+                 key=lambda x: x["t0"])
+    if not sel or not parts:
+        return 0
+    total = sum(x["secs"] for x in sel)
+    alloc = [[pid, max(0.0, float(sec))] for pid, sec in parts]
+    alloc[-1][1] = max(0.0, total - sum(a[1] for a in alloc[:-1]))
+    src = {r["id"]: r for r in conn.execute(
+        "SELECT id,app,title,wclass FROM obs WHERE id IN (%s)" % ",".join("?" * len(want)),
+        list(want))}
+    made = 0
+    k, left = 0, alloc[0][1]
+    for x in sel:
+        a = x["t0"]
+        while a < x["t1"] - 1e-6 and k < len(alloc):
+            if left <= 1e-6:
+                k += 1
+                if k >= len(alloc):
+                    break
+                left = alloc[k][1]
+                continue
+            b = min(x["t1"], a + left)
+            o = src.get(x["id"])
+            store.add_split(conn, a, b, o["app"] if o else x["app"],
+                            o["title"] if o else x["title"], o["wclass"] if o else "",
+                            alloc[k][0], x["stage"], x["doc"])
+            made += 1
+            left -= b - a
+            a = b
+    store.audit(conn, "split_row", list(ids), [list(p) for p in alloc])
+    conn.commit()
+    return made
 
 
 def saves_by_doc(conn, t0, t1):

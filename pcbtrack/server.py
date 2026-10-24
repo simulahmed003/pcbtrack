@@ -178,6 +178,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, {"ok": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
                 return
+            if u.path == "/api/split":
+                day = dt.date.fromisoformat(body["date"])
+                parts = [(p.get("project_id") or None, float(p.get("minutes", 0)) * 60)
+                         for p in body.get("parts", [])]
+                n = report.split_row(c, CFG, day, [int(i) for i in body["ids"]], parts)
+                return self._send(200, {"ok": n > 0, "pieces": n})
+            if u.path == "/api/split/undo":
+                n = store.delete_splits(c, [int(i) for i in body["ids"]])
+                return self._send(200, {"ok": True, "removed": n})
             if u.path == "/api/manual/delete":
                 ok = store.delete_manual(c, int(body["id"]))
                 return self._send(200 if ok else 404, {"ok": ok})
