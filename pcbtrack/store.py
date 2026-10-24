@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS doc_projects(
 
 
 def connect(path):
+    """Open the database (WAL mode), create tables and run the small
+    in-place migrations older databases need."""
     first = not os.path.exists(path)
     c = sqlite3.connect(path, timeout=15)
     c.row_factory = sqlite3.Row
@@ -182,6 +184,7 @@ def new_id(prefix):
 
 
 def ensure_client(c, name):
+    """Id of the client with this name, created if needed."""
     r = c.execute("SELECT id FROM clients WHERE name=? COLLATE NOCASE", (name,)).fetchone()
     if r:
         return r["id"]

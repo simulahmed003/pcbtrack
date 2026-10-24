@@ -47,6 +47,8 @@ class Replay:
 
 
 def win_probe(altium_procs=("x2.exe", "dxp.exe")):
+    """Build the live Windows probe: a function returning one Sample
+    (foreground app, title, class, idle seconds, locked, Altium document)."""
     import ctypes
     from ctypes import wintypes
     u32 = ctypes.WinDLL("user32", use_last_error=True)

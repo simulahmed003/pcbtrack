@@ -82,6 +82,8 @@ def _merge(base, over):
 
 
 def load():
+    """Defaults merged with the user's config.json from the data folder.
+    Adds `_path` and `_data_dir`, and the final stage list."""
     path = os.path.join(data_dir(), "config.json")
     user = {}
     if os.path.exists(path):

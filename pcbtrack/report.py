@@ -18,6 +18,9 @@ def fmt(secs):
 
 
 def load_day(conn, cfg, day, now=None, backfill=True):
+    """The day's intervals, ready to aggregate: backfilled labels, guessed
+    projects, gaps filled with 'off', thinking grace applied.
+    Returns (intervals, day_start, day_end)."""
     t0, t1 = sessionize.day_window(day, cfg["day_cutover_hour"])
     now = now or __import__("time").time()
     if backfill:
@@ -217,6 +220,7 @@ def focus_stats(work, cadset, max_gap=120):
 
 
 def week_totals(conn, cfg, day, now=None):
+    """Work and Altium time from Monday of `day`'s week up to `day`."""
     cadset = {a.upper() for a in cfg.get("cad_processes", [])}
     start = day - dt.timedelta(days=day.weekday())
     work = cad = 0.0
@@ -233,6 +237,7 @@ def week_totals(conn, cfg, day, now=None):
 
 
 def summary(conn, cfg, day, now=None):
+    """Everything the dashboard shows for one day, as one dict."""
     iv, t0, t1 = load_day(conn, cfg, day, now)
     names = store.project_names(conn)
     parents = store.project_parents(conn) if cfg.get(
@@ -342,6 +347,7 @@ def review_queue(conn, cfg, day, limit=60, now=None):
 
 
 def markdown(conn, cfg, day, now=None):
+    """The day report as Markdown (Day report button, `pcbtrack report`)."""
     s = summary(conn, cfg, day, now)
     L = []
     A = L.append
@@ -494,6 +500,8 @@ AI_PROMPT = (
 
 
 def range_markdown(r):
+    """A period report as Markdown, one section per project with its
+    stages, documents and notes. `r` comes from range_summary()."""
     L = []
     A = L.append
     A("# Work report %s to %s" % (r["from"], r["to"]))
@@ -586,6 +594,8 @@ def range_zip(conn, cfg, d0, d1, project_ids=None):
 
 
 def range_csv(r, detail=False):
+    """Summary CSV (project x stage, project x document) or, with detail,
+    one line per block. Starts with a BOM so Excel reads UTF-8."""
     import io
     f = io.StringIO()
     w = csv.writer(f)
@@ -612,6 +622,8 @@ def range_csv(r, detail=False):
 
 
 def export(conn, cfg, day, outdir=None, now=None):
+    """Write day_<date>.md/.json/.csv into the reports folder; returns the
+    path without extension."""
     outdir = outdir or os.path.join(cfg["_data_dir"], "reports")
     os.makedirs(outdir, exist_ok=True)
     base = os.path.join(outdir, "day_%s" % day.isoformat())

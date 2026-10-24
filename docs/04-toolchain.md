@@ -4,7 +4,7 @@
 
 | | |
 | --- | --- |
-| Language | Python 3.8+ (developed against 3.10 / 3.13) |
+| Language | Python 3.8+ (live on 3.12 on the owner's PC) |
 | Dependencies | **none** - standard library only, on purpose |
 | OS for tracking | Windows 10 / 11 |
 | OS for development and tests | any (the `Replay` backend removes the Windows need) |
@@ -25,6 +25,7 @@ pcbtrack/            the package
   config.py          defaults + user config merge + data dir
   store.py           schema, interval writer, projects, labels, audit
   sysmon.py          Win32 probe (ctypes) and the Replay test backend
+  altium.py          reads Altium's active document from its child windows
   signals.py         Altium Recovery / History / save watching
   rules_default.py   dialog dictionary, app rules, title patterns
   classify.py        the signal ladder, confidences, backfill
@@ -33,7 +34,8 @@ pcbtrack/            the package
   report.py          summary, review queue, markdown/csv/json
   server.py          dashboard + JSON API, 127.0.0.1 only
   probe.py           one-off Altium window discovery
-  web/dashboard.html the whole UI
+  web/dashboard.html the whole UI (one file, no framework, no CDN)
+  cli.py             `python -m pcbtrack <command>`
 tests/replay_day.py  full pipeline over a synthetic workday
 docs/                this folder
 *.bat                Windows launchers
@@ -42,10 +44,24 @@ docs/                this folder
 ## Development loop
 
 ```
-python tests/replay_day.py        # 20 checks, must print "0 check(s) failed"
+python tests/replay_day.py        # 63 checks, must print "0 check(s) failed"
 python -m pcbtrack doctor         # setup check (reports Altium gaps)
 PCBTRACK_DATA=/tmp/x python -m pcbtrack report
 ```
+
+**Never test UI changes against the owner's live data.** Copy the database
+into a scratch folder and point a second dashboard at it:
+
+```
+mkdir C:\tmp\pt
+python -c "import sqlite3,os; s=sqlite3.connect(os.path.expandvars(r'%LOCALAPPDATA%\pcbtrack\activity.db')); d=sqlite3.connect(r'C:\tmp\pt\activity.db'); s.backup(d)"
+echo {"port": 18902} > C:\tmp\pt\config.json
+set PCBTRACK_DATA=C:\tmp\pt
+python -m pcbtrack serve
+```
+
+Restart the live tracker after code changes with `python -m pcbtrack stop
+--all`, then `track.bat` and `dashboard.bat`.
 
 `tests/replay_day.py` drives the real tracker, classifier and sessionizer
 through a scripted day, with synthetic Auto Save evidence. Anything touching

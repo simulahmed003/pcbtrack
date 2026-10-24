@@ -1,0 +1,4 @@
+# Windows launchers need CRLF; everything else is stored with LF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.db binary

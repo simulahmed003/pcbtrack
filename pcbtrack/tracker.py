@@ -64,6 +64,8 @@ def guard_streams(cfg, name):
 
 
 def run(cfg=None, probe=None, max_ticks=None, quiet=False):
+    """Track until stopped. `probe` and `max_ticks` let tests drive the
+    loop with a scripted day instead of the live Windows probe."""
     cfg = cfg or config.load()
     if probe is None:
         guard_streams(cfg, "tracker.log")
@@ -249,6 +251,7 @@ def set_autostart(on):
 
 
 def status(cfg=None):
+    """Running?, heartbeat age, row counts, database size, data folder."""
     cfg = cfg or config.load()
     conn = store.connect(store.db_path(cfg))
     hb = store.meta_get(conn, "heartbeat")

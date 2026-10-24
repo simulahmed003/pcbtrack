@@ -24,6 +24,9 @@ PRIVATE = "(private)"
 
 
 class Classifier:
+    """Labels each 5-second sample with project, work stage, document,
+    confidence and a reason, following the signal ladder above. Keeps a
+    little state between samples (last project, Altium session project)."""
     def __init__(self, cfg, conn):
         self.cfg = cfg
         self.c = conn

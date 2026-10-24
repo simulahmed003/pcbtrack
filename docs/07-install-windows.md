@@ -1,92 +1,118 @@
 # Install on Windows
 
+## Requirements
+
+- Windows 10 or 11
+- Python 3.8 or newer (no extra packages)
+- Altium Designer 18 or newer for document and stage detection (tested on 26.7.1)
+
 ## 1. Python
 
-Install Python 3.8 or newer from [python.org](https://www.python.org/downloads/).
-**Tick "Add Python to PATH"** in the installer. Check it worked:
+Install Python from [python.org](https://www.python.org/downloads/).
+**Tick "Add Python to PATH"** in the installer. Check it in a new terminal:
 
-```
+```bash
 python --version
 ```
 
-## 2. Turn on Altium Auto Save - this step is not optional
+## 2. Get pcbtrack
 
-Without it, pcbtrack can tell you *that* you were in Altium but not whether
-you were drawing a schematic, routing the board, or building a footprint.
-Altium's window title does not carry the document name (removed in AD 18.1),
-so the Auto Save recovery files are the only cheap signal.
+Download the repository as a ZIP from GitHub (*Code -> Download ZIP*) and
+extract it, or clone it:
 
-In Altium Designer:
-
-1. **Preferences** (the gear, top right) -> **Data Management** -> **Backup**
-2. **Auto save every: 2 minutes**  (1-5 is fine; shorter means finer tracking)
-3. **Number of versions to keep: 10**
-4. Leave the path at its default, or note it if you change it
-5. Optionally tick **Add autosaved documents to history**
-6. Apply, OK
-
-Altium warns that each Auto Save briefly pauses editing while it writes. At a
-2-minute interval this is barely noticeable, and it is also a genuine crash
-safety net.
-
-## 3. Install pcbtrack
-
-Put the folder where it will stay - `D:\Tracker` - then double-click
-**`install.bat`**. It will:
-
-- check Python is on PATH
-- run `doctor` and tell you if the Recovery folder cannot be found
-- add a startup entry so tracking begins when you log in
-- start tracking now
-
-For a portable copy (USB stick, second PC) create an empty file named
-`portable.flag` next to `install.bat`; the database then lives in `.\data`
-beside the program instead of `%LOCALAPPDATA%\pcbtrack`.
-
-## 4. Check it is working
-
+```bash
+git clone https://github.com/simulahmed003/pcbtrack.git D:\Tracker
 ```
+
+Put it somewhere it can stay. The login entry remembers this folder; if you
+move it later, run `install.bat` again.
+
+## 3. Install
+
+Double-click **`install.bat`**. It:
+
+1. checks that Python is on PATH,
+2. runs `python -m pcbtrack doctor` and prints anything missing,
+3. adds `pcbtrack.bat` to your Startup folder so tracking starts at login,
+4. starts tracking now.
+
+Then double-click **`dashboard.bat`**. Within a few seconds the top strip
+should show a green dot and your current program.
+
+## 4. Optional: Altium Auto Save
+
+pcbtrack reads the open document from Altium's window, so Auto Save is not
+required. It is still useful: autosave copies show that a document was
+*edited*, not just viewed, and protect your work.
+
+*Preferences -> Data Management -> Backup*: **Auto save every 2 minutes**,
+**keep 10 versions**.
+
+## 5. Optional: count saves per document
+
+In the dashboard's **Settings**, list your Altium project folders, one per
+line (e.g. `D:\Altium\ESC_Board_5Vbuck`). The Altium table then shows how many
+times each document was saved.
+
+## 6. Check it works
+
+```bash
 python -m pcbtrack doctor
+python -m pcbtrack status
 ```
 
-You want to see a Recovery folder found, and recovery files listed once you
-have had Altium open with unsaved changes for a few minutes.
+Open Altium, switch between a schematic, the PCB and a library for a minute,
+then look at **Altium today** on the dashboard: each document should be
+listed with the right *Detected* editor.
 
-Then work normally for an hour and open **`dashboard.bat`**.
+## Files and launchers
 
-## 5. Run the discovery probe once
-
-```
-python -m pcbtrack probe
-```
-
-It watches for two minutes. While it runs, switch Altium between a schematic,
-the PCB, a schematic library and a PCB library, holding each about 20 seconds.
-It saves a JSON file and prints what it saw. Send that back and the rules get
-tuned for your exact install - this is how the remaining unknowns in
-`08-open-questions.md` get settled.
-
-## Daily use
-
-| Action | How |
+| File | What it does |
 | --- | --- |
-| See the day | `dashboard.bat` |
-| Fix wrong guesses | the Review table, biggest blocks first |
-| Say what you got done | the note box, or `python -m pcbtrack note "..."` |
-| Log off-PC work | `python -m pcbtrack log 45 "client call" --stage client_meeting` |
-| Export | the Export button, or `python -m pcbtrack report` |
+| `install.bat` | check setup, start tracking, start at every login |
+| `track.bat` | start tracking now (background, no window) |
+| `dashboard.bat` | open the dashboard |
+| `stop.bat` | stop tracking and close the dashboard |
+| `report.bat` | write today's report files |
+| `doctor.bat` | check the setup |
+| `probe.bat` | record what Altium shows, for diagnosing detection problems |
+| `make_portable.bat` | switch to portable mode (data next to the program) |
+| `uninstall.bat` | remove the login entry and stop tracking; keeps your data |
+
+## Where the data lives
+
+`%LOCALAPPDATA%\pcbtrack` (press Win+R and paste that to open it):
+
+| File | Contents |
+| --- | --- |
+| `activity.db` | all tracking data, labels, projects and notes (SQLite) |
+| `config.json` | your settings (only what you changed) |
+| `backups\` | automatic backups made before any Danger zone action |
+| `reports\` | report files written by `pcbtrack report` |
+| `tracker.log`, `dashboard.log` | errors and restarts, for troubleshooting |
+| `perf.log` | accuracy numbers from `pcbtrack selfcheck` |
+
+## Portable mode (USB drive, second PC)
+
+Run **`make_portable.bat`**. It stops tracking, copies your existing data
+into a `data` folder next to the program, creates `portable.flag`, and starts
+tracking again. From then on everything stays inside the pcbtrack folder.
+Delete `portable.flag` to go back. Do not run two PCs on the same data at the
+same time.
 
 ## Uninstall
 
-`uninstall.bat` removes the startup entry. Your data stays in
-`%LOCALAPPDATA%\pcbtrack` - delete that folder to erase everything.
+1. Run **`uninstall.bat`**: removes the login entry and stops tracking.
+2. Delete the pcbtrack folder.
+3. To erase your data as well, delete `%LOCALAPPDATA%\pcbtrack`.
 
-## If something is wrong
+## Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
-| "already tracking" | It is running. One instance is deliberate: two would double count. |
-| Recovery folder NOT FOUND | Auto Save is off, or on a non-default path. Do step 2, then `doctor`. |
-| All Altium time shows one stage | Auto Save interval too long, or you were viewing without editing. Shorten the interval; confirm blocks in Review. |
-| Stage is `unknown` | No signal existed. Confirm it in Review; the correction can become a rule. |
-| Defender warns | Nothing is compiled or packed - these are plain `.py` text files you can read. |
+| `python` is not recognised | Python is not on PATH. Reinstall it with "Add Python to PATH" ticked. |
+| "already tracking" | It is running. Only one copy may run, so nothing is counted twice. |
+| Altium time shows but no documents | Altium may be running as administrator while pcbtrack is not. Run both the same way. Then run `probe.bat` and share the JSON it writes. |
+| Dashboard shows *stopped unexpectedly* | The tracker exited on an error. The dashboard restarts it; details are in `tracker.log`. |
+| Port 8765 in use by another program | Add `{"port": 8790}` to `config.json` in the data folder. |
+| Windows Defender warning | pcbtrack is plain, readable `.py` and `.bat` files; nothing is compiled or packed. |

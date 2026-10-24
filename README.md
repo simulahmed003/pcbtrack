@@ -1,100 +1,141 @@
 # pcbtrack
 
-Local, offline work-hour tracking for PCB and electronics design work.
-It records **how long you worked, on which project, in which software, on
-which document, and at which stage of the design** - then lets you correct
-its guesses in a couple of minutes a day.
+**Automatic, offline work-hour tracking for PCB designers, built around Altium Designer.**
 
-Built for Altium Designer on Windows first; KiCad and EasyEDA next.
+pcbtrack runs quietly in the background on Windows and records how long you
+worked, **on which project, in which document, and at which design stage**:
+schematic, symbol library, footprint library, PCB layout, DRC, BOM and more.
+At the end of the day you check its guesses in a couple of minutes, add a
+short note per project, and export a report for yourself or your client.
 
-- **Standard library only.** No `pip install`, no service, no admin rights,
-  no browser extension, no CAD plugin.
-- **Nothing leaves your machine.** No network calls, no account, no telemetry.
-  The dashboard binds `127.0.0.1` only.
-- **No screenshots, no keylogging.** Window titles, process names and the
-  timing of file saves. Nothing else.
-- **Honest by design.** Every label carries a confidence; reports separate
-  what you confirmed from what the tracker guessed.
+- **Altium first.** It reads the open document straight from Altium's window
+  (`Power.SchDoc`, `ESC_Board.PcbDoc`, `ESC_FOOT.PcbLib`), so schematic, layout
+  and library time are separated automatically. Other software (browser,
+  datasheets, Excel, chat) is tracked too, as a secondary view.
+- **Lightweight.** Pure Python standard library: no `pip install`, no admin
+  rights, no browser extension, no Altium plugin. One background process
+  checks the screen every 5 seconds.
+- **Private.** Nothing leaves your PC. No account, no network calls, no
+  screenshots, no keylogging. The dashboard is only reachable from your own
+  machine (`127.0.0.1`).
+- **Honest.** Every automatic label is marked as a guess until you confirm it,
+  and reports say how much of the time you confirmed.
 
-## Why it exists
+> Status: **v0.9.1**, in daily use by the author since October 2026. Windows
+> only for live tracking. See [CHANGELOG.md](CHANGELOG.md).
 
-Altium's window title only ever shows the *project*, never the open document
-(the option was removed in Altium Designer 18.1). So schematic, PCB layout,
-symbol-library and footprint-library work look identical from outside the
-application. In a two-day baseline with a title-only tracker, 70% of working
-time landed in one unsplittable bucket.
+---
 
-pcbtrack reads the **active document out of Altium's child windows** - the
-`TdxTabSheet` caption holds `[1] ESC_PCB.SchDoc`, `ESC_Board.PcbDoc` and so on
-- with plain Win32 calls. No UI Automation, no COM, no Altium plugin. Altium's
-Auto Save recovery files corroborate it and prove that editing (not just
-viewing) happened. Confirmed by probe against Altium Designer 26.7.1:
-[docs/09-probe-2026-10-24.md](docs/09-probe-2026-10-24.md),
+## Install (5 minutes)
+
+1. **Install Python 3.8 or newer** from [python.org](https://www.python.org/downloads/)
+   and tick **"Add Python to PATH"** during setup.
+2. **Get pcbtrack**: download this repository as a ZIP (green *Code* button ->
+   *Download ZIP*) and extract it to a folder it can stay in, for example
+   `D:\Tracker`. Or clone it:
+   ```bash
+   git clone https://github.com/simulahmed003/pcbtrack.git D:\Tracker
+   ```
+3. **Double-click `install.bat`.** It checks Python, starts tracking, and adds
+   pcbtrack to your login so it starts with Windows.
+4. **Double-click `dashboard.bat`** to open the dashboard in your browser.
+
+Optional: turn on Altium Auto Save (*Preferences -> Data Management -> Backup*,
+every 2 minutes). pcbtrack works without it, but autosaves are extra evidence
+that you were editing rather than just looking.
+
+Full guide, including portable (USB) mode and troubleshooting:
+**[docs/07-install-windows.md](docs/07-install-windows.md)**
+
+## Daily use in one minute
+
+| When | What to do |
+| --- | --- |
+| While working | Nothing. Work in Altium as usual. |
+| End of the day | Open `dashboard.bat`. In **Altium today**, check each document's **Work stage** and **Project** (amber = guess) and fix any that are wrong. |
+| | Write a line in **Daily notes** for each project: what got done. |
+| Off the PC (meeting, milling, soldering, study) | **Add time by hand**. |
+| End of the week / for a client | **Report for a period**: pick dates and projects, download Markdown or CSV, or one report per project as a ZIP. |
+| Taking a break from tracking | **Stop tracking** on the dashboard, or `stop.bat`. Start again with **Start tracking** or `track.bat`. |
+
+The complete walkthrough of every panel is in the
+**[User guide](docs/USER_GUIDE.md)**.
+
+## What you get
+
+- **Altium today**: every document you worked on, grouped by project: when,
+  what was on screen (*Detected*: Schematic editor, PCB editor, PCB library,
+  a DRC dialog...), the *Work stage*, number of saves, and time. Change the
+  stage or project per row, or **split** a row across several projects.
+- **Timeline** of the day, with an Altium-only lane coloured by stage.
+- **Focus**: share of your work spent in Altium, longest unbroken stretch,
+  daily target progress, this week's totals.
+- **Daily notes**: one per project per day, editable, included in reports.
+- **Reports** for any period, per project or all projects: Markdown, summary
+  CSV (hours per project x stage and per document), every block as CSV, a ZIP
+  with one report per project, and an AI-ready brief you can paste into any
+  assistant.
+- **Projects and clients** that you can create up front, rename, group
+  (main board + test jig under one job), and delete in a protected
+  **Danger zone** that backs up your data first.
+
+## Command line
+
+Everything the dashboard does is also available from a terminal in the
+pcbtrack folder:
+
+```bash
+python -m pcbtrack doctor             # check the setup, say what is missing
+python -m pcbtrack track              # start tracking (only one copy can run)
+python -m pcbtrack stop --all         # stop tracking and close the dashboard
+python -m pcbtrack serve              # open the dashboard
+python -m pcbtrack report 2026-10-24  # write md / csv / json for a day
+python -m pcbtrack log 45 "client call" --stage client_meeting --project "Buck converter"
+python -m pcbtrack autostart off      # do not start with Windows (on to undo)
+python -m pcbtrack portable           # keep data next to the program (USB drive)
+python -m pcbtrack probe              # record what Altium exposes, for diagnosis
+python -m pcbtrack selfcheck          # append accuracy numbers to perf.log
+```
+
+## Your data
+
+Everything is stored in one SQLite file, `activity.db`, in
+`%LOCALAPPDATA%\pcbtrack` (or in `data\` next to the program in portable mode),
+together with `config.json`, logs and automatic backups. It contains
+timestamps, program names, window titles, document names and your notes.
+Titles matching the private patterns (banking, WhatsApp, Facebook, private
+browsing...) are stored only as `(private)`.
+
+To remove everything: run `uninstall.bat`, then delete that folder.
+
+## How it works (short version)
+
+Altium's title bar names the project but not the open document, so a normal
+time tracker cannot tell schematic work from layout or library work. pcbtrack
+reads the **active document tab from Altium's child windows** with plain
+Win32 calls (`EnumChildWindows`), which also works while you are only viewing.
+Dialog captions (Design Rule Checker, Engineering Change Order, Bill of
+Materials...) refine the stage. Each 5-second sample is merged into intervals
+in SQLite; the dashboard turns them into a day where work + idle + locked +
+not-tracked always adds up to exactly 24 hours.
+
+Details: [docs/03-architecture.md](docs/03-architecture.md) and
 [docs/02-stage-detection.md](docs/02-stage-detection.md).
 
-## Install (Windows)
+## For developers
 
-1. Install Python 3.8+ from python.org, ticking **Add Python to PATH**.
-2. Download or clone this folder.
-3. Recommended: turn Altium Auto Save on - *Preferences -> Data Management ->
-   Backup*, every **2 minutes**, keep **10** versions. Stage detection works
-   without it, but Auto Save distinguishes editing from viewing and is a
-   genuine crash safety net.
-4. Double-click `install.bat`. It checks the setup and starts tracking at login.
-5. Double-click `dashboard.bat` to see your day.
-6. To switch it off: **Stop tracking** on the dashboard, or `stop.bat` (stops
-   tracking and closes the dashboard). `track.bat` starts it again; untick
-   **start at login** if you only want it when you ask.
+- Project context and the decisions behind the design, for anyone (human or
+  AI) picking this up: **[docs/CONTEXT.md](docs/CONTEXT.md)**
+- Toolchain, layout, tests and conventions: [docs/04-toolchain.md](docs/04-toolchain.md)
+- Why each version looks the way it does: [docs/10-version-analysis.md](docs/10-version-analysis.md)
+- Open questions and next experiments: [docs/08-open-questions.md](docs/08-open-questions.md)
 
-Full walkthrough: [docs/07-install-windows.md](docs/07-install-windows.md).
+Run the tests (63 checks over a synthetic workday, no Windows needed):
 
-## Use
-
+```bash
+python tests/replay_day.py
 ```
-python -m pcbtrack doctor      check the setup, say what is missing
-python -m pcbtrack track       start tracking (one instance only)
-python -m pcbtrack stop        stop tracking (--all also closes the dashboard)
-python -m pcbtrack autostart off   do not start at login (on to undo)
-python -m pcbtrack serve       dashboard at http://127.0.0.1:8765
-python -m pcbtrack report      write md / csv / json for today
-python -m pcbtrack note "finished power stage, 3 footprints done"
-python -m pcbtrack log 45 "client call" --stage client_meeting
-python -m pcbtrack probe       inspect what Altium exposes on your machine
-python -m pcbtrack selfcheck   append a line to perf.log for weekly review
-```
-
-The dashboard shows a **live strip** of what you are doing right now
-(refreshed every 5 s from a 291-byte endpoint), the full 24 hours, the
-breakdown by project / stage / software / document, a review queue of the
-blocks it is unsure about, and a box for a short note on what you actually got
-done. Every work block gets a project: by file or title, by a shared word in
-the project name (`Buck converter` <- `Buck_Regulator.PcbDoc`), or, when
-nothing names one, a guess from the project you last worked on, shown in
-amber until you confirm or change it.
-
-In the Altium table every document row shows **when** it happened, what was
-**detected** on screen (a fact), and a **work stage** and **project** you can
-change; a row can be **split** across projects and the split undone.
-Deleting projects, clients, stages or whole days lives in Settings ->
-Danger zone, behind typed confirmations and an automatic backup. One client job can hold several Altium projects, grouped with the
-"Groups under" dropdown, and library + footprint + component-search time can
-be merged into one report line with a checkbox.
-
-## Status
-
-v0.2.0, early. The pipeline is tested against a synthetic workday
-(`python tests/replay_day.py`, 24 checks). The Altium dialog dictionary is
-partly verified: entries are marked `OBSERVED` or `UNVERIFIED` in
-`pcbtrack/rules_default.py`. Open questions are in
-[docs/08-open-questions.md](docs/08-open-questions.md).
-
-## Privacy
-
-Stored locally in `%LOCALAPPDATA%\pcbtrack` (or `./data` in portable mode):
-timestamps, process names, window titles, file names and your own notes.
-Titles matching `private_title_patterns` are stored as `(private)`. Delete
-everything by deleting that folder. Nothing is uploaded, ever.
 
 ## Licence
 
-MIT - see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

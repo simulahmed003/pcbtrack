@@ -12,6 +12,8 @@ from . import config, signals
 
 
 def windows_snapshot():
+    """Every top-level window with its process and all child windows
+    (class, caption, visible) - the raw material for detection rules."""
     import ctypes
     from ctypes import wintypes
     u32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -83,6 +85,7 @@ def windows_snapshot():
 
 
 def run(seconds=120, interval=10):
+    """Sample the windows for a while and save a JSON file for diagnosis."""
     cfg = config.load()
     print("pcbtrack probe - watching for %ds\n" % seconds)
     print("While this runs, please switch Altium between, holding each ~20s:")

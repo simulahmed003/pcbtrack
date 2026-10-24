@@ -13,6 +13,30 @@ billing maths.
 Owner: Simul Ahmed. Primary tool: Altium Designer 26.7 on Windows.
 Secondary: KiCad, EasyEDA Pro. Repo lives at `D:\Tracker`.
 
+## Current state (v0.9.1, 24 Oct 2026)
+
+Installed and running on the owner's PC from `D:\Tracker`, data in
+`%LOCALAPPDATA%\pcbtrack`, pushed to `github.com/simulahmed003/pcbtrack`.
+Built in one long session in Claude Code; every version is in `CHANGELOG.md`.
+
+What exists: Altium-first dashboard (Detected vs editable Work stage, project
+per row, split/undo, saves), other-software table, hand entries, daily notes
+per project, period notes, period reports (md / csv / zip per project / AI
+brief), projects / clients / custom stages, Danger zone with backups,
+start/stop/autostart, watchdog, portable mode. 63 replay checks.
+
+Owner preferences learned so far:
+- **Altium depth first**; other software is secondary and optional.
+- **Time only, no billing maths** (employer pay deliberately left out).
+- Everything automatic must be correctable by hand, and deletions must sit
+  behind typed confirmation.
+- Weekly iteration: run it for real, report what was wrong, fix.
+
+Known gaps: placement vs routing vs silkscreen inside the PCB editor is not
+detectable yet (see `08-open-questions.md`, section D); the old
+PCBWorkTracker2 scheduled task on the owner's PC still needs an admin to
+disable it.
+
 ## The one fact that shapes the whole design
 
 **Settled 24 Oct 2026 by probe.** See "The signal that actually works" below:
@@ -96,6 +120,11 @@ having on: it proves editing happened and corroborates the document
 | `pcbtrack/sessionize.py` | dedup, 24h accounting, thinking grace |
 | `pcbtrack/store.py` | SQLite, two-layer schema |
 | `pcbtrack/probe.py` | one-off Altium discovery probe |
+| `pcbtrack/altium.py` | active document from Altium child windows |
+| `pcbtrack/report.py` | day summary, detail rows, period reports, split |
+| `pcbtrack/server.py` | dashboard API (endpoint map in the `H` docstring), watchdog |
+| `pcbtrack/web/dashboard.html` | the whole UI |
+| `docs/USER_GUIDE.md` | how to use every panel |
 | `tests/replay_day.py` | full pipeline against a synthetic day |
 | `docs/02-stage-detection.md` | why each signal, with sources |
 | `docs/08-open-questions.md` | what is still unverified |

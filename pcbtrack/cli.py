@@ -27,6 +27,7 @@ def _argval(args, flag, default=None):
 
 
 def cmd_note(cfg, args):
+    """`pcbtrack note "text" [--project NAME]`: a note for today."""
     if not args:
         print("need text"); return 2
     c = store.connect(store.db_path(cfg))
@@ -40,6 +41,8 @@ def cmd_note(cfg, args):
 
 
 def cmd_log(cfg, args):
+    """`pcbtrack log MIN "text" [--project NAME] [--stage STAGE]`: hand
+    entry for off-PC work that ended now."""
     if len(args) < 2:
         print('need: log <minutes> "<what>"'); return 2
     mins = float(args[0]); text = args[1]
@@ -82,6 +85,8 @@ def cmd_selfcheck(cfg):
 
 
 def cmd_doctor(cfg):
+    """`pcbtrack doctor`: check Python, platform, Altium Recovery folder and
+    whether tracking runs. Exit code 1 when something needs fixing."""
     from . import signals
     ok = True
     print("pcbtrack %s" % __version__)
@@ -114,6 +119,7 @@ def cmd_doctor(cfg):
 
 
 def main(argv=None):
+    """Entry point for `python -m pcbtrack <command>`; see USAGE."""
     argv = list(argv if argv is not None else sys.argv[1:])
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(USAGE); return 0

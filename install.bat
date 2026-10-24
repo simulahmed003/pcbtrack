@@ -1,4 +1,5 @@
 @echo off
+rem Check Python, start tracking now and at every Windows login.
 setlocal
 cd /d "%~dp0"
 where python >nul 2>nul || (echo Python 3.8+ required. Install from python.org and tick "Add to PATH". & pause & exit /b 1)

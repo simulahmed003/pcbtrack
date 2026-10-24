@@ -15,6 +15,24 @@ def _day(q):
 
 
 class H(BaseHTTPRequestHandler):
+    """The JSON API behind web/dashboard.html.
+
+    GET  /                 the dashboard page
+    GET  /api/day?date=    everything for one day (report.summary + lists)
+    GET  /api/now          small live status, polled every 5 s
+    GET  /api/range        period report: fmt=json|md|csv|csvdetail|zip|brief
+    GET  /api/markdown     day report text;  /api/export  write day files
+    POST /api/label        set project / stage for block ids
+    POST /api/split        split a row between projects; /api/split/undo
+    POST /api/manual       hand entry; /api/manual/delete
+    POST /api/daynote      the one note per project per day
+    POST /api/note         period note; /api/note/delete
+    POST /api/project      edit project; /api/project/create; /api/merge_project
+    POST /api/stage        add a custom stage
+    POST /api/setting      daily target, project folders, report switches
+    POST /api/tracker      start / stop tracking; /api/autostart
+    POST /api/danger       deletions, behind typed confirmation + backup
+    POST /api/quit         close the dashboard"""
     server_version = "pcbtrack"
 
     def log_message(self, *a):
@@ -339,6 +357,8 @@ def _watchdog(every=30):
 
 
 def serve(cfg=None, open_browser=True):
+    """Run the dashboard until closed. One copy only: a second launch just
+    opens the browser on the running one."""
     global CFG
     CFG = cfg or config.load()
     from .tracker import guard_streams
