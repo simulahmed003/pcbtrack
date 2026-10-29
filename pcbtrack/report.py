@@ -162,6 +162,44 @@ def window_tools(conn, cfg, t0, t1):
     return tools_of([x for x in iv if x["state"] == "work"])
 
 
+def absorbed(conn, cfg, t0, t1, exclude_id=None, limit=40):
+    """The tracked records inside [t0,t1) that a hand entry covers, grouped
+    by program and page/document, for the approve dialog and for the list
+    under each log. Read from the tracked layer only (overlays ignored), so
+    these are shown for reference and never counted twice.
+
+    Also returns earlier hand entries / merges the window overlaps: a new
+    log replaces them for the overlapping minutes."""
+    iv = sessionize.intervals(conn, t0, t1, join_gap=cfg["tick_seconds"] * 2 + 1,
+                              overlays=False)
+    groups = {}
+    idle = 0.0
+    for x in iv:
+        if x["state"] != "work":
+            idle += x["secs"]
+            continue
+        what = x["doc"] or clean_title(x["title"])
+        key = (tool_name(x["app"]) if x["app"] else "(no program)", what)
+        g = groups.setdefault(key, {"tool": key[0], "what": key[1], "secs": 0.0,
+                                    "first": x["t0"], "last": x["t1"]})
+        g["secs"] += x["secs"]
+        g["first"] = min(g["first"], x["t0"])
+        g["last"] = max(g["last"], x["t1"])
+    rows = sorted(groups.values(), key=lambda g: -g["secs"])
+    names = store.project_names(conn)
+    prior = [{"id": r["id"], "t0": r["t0"], "t1": r["t1"], "text": r["title"],
+              "project": names.get(r["project_id"], ""), "stage": r["stage"]}
+             for r in conn.execute(
+                 "SELECT o.id,o.t0,o.t1,o.title,l.project_id,l.stage FROM obs o"
+                 " LEFT JOIN labels l ON l.obs_id=o.id WHERE o.collector IN ('manual','merge')"
+                 " AND o.t1>? AND o.t0<? AND o.id<>? ORDER BY o.t0",
+                 (t0, t1, exclude_id or -1))]
+    return {"records": rows[:limit], "more": max(0, len(rows) - limit),
+            "count": len(rows), "work_s": sum(g["secs"] for g in rows),
+            "idle_s": idle, "tools": tools_of([x for x in iv if x["state"] == "work"]),
+            "replaces": prior}
+
+
 def merge_rows(conn, cfg, day, ids, project_id, stage, note):
     """Join table rows into one block: every interval of those rows gets a
     'merge' overlay with one project, one stage, the note, and the combined
@@ -407,7 +445,8 @@ def summary(conn, cfg, day, now=None):
                            for p, d in by_pd.items()},
         "notes": [n for n in notes if n["kind"] != "daily"],
         "daily_notes": store.daily_notes(conn, day.isoformat()),
-        "manual": store.manual_between(conn, t0, t1),
+        "manual": [dict(m, absorbed=absorbed(conn, cfg, m["t0"], m["t1"], exclude_id=m["id"]))
+                   for m in store.manual_between(conn, t0, t1)],
         "timeline": [{"t0": x["t0"], "t1": x["t1"], "state": x["state"],
                       "stage": x["stage"], "project": names.get(x["project_id"], ""),
                       "doc": x["doc"], "app": x["app"],

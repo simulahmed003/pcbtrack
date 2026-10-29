@@ -20,6 +20,7 @@ class H(BaseHTTPRequestHandler):
     GET  /                 the dashboard page
     GET  /api/day?date=    everything for one day (report.summary + lists)
     GET  /api/now          small live status, polled every 5 s
+    GET  /api/absorb       what a hand entry for date/start/end would merge
     GET  /api/range        period report: fmt=json|md|csv|csvdetail|zip|brief
     GET  /api/markdown     day report text;  /api/export  write day files
     POST /api/label        set project / stage for block ids
@@ -85,6 +86,16 @@ class H(BaseHTTPRequestHandler):
                 n["autostart"] = os.path.exists(tracker.startup_file())
                 n["stopped_by_user"] = _stopped_by_user(c)
                 return self._send(200, n)
+            if u.path == "/api/absorb":
+                # preview for "Add or merge time": what the window would absorb
+                day = dt.date.fromisoformat(q["date"][0])
+                a = dt.datetime.combine(day, dt.time.fromisoformat(q["start"][0]))
+                b = dt.datetime.combine(day, dt.time.fromisoformat(q["end"][0]))
+                if b <= a:
+                    b += dt.timedelta(days=1)
+                r = report.absorbed(c, CFG, a.timestamp(), b.timestamp())
+                r["window_s"] = b.timestamp() - a.timestamp()
+                return self._send(200, r)
             if u.path == "/api/markdown":
                 return self._send(200, report.markdown(c, CFG, _day(q)),
                                   "text/plain; charset=utf-8")

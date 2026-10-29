@@ -409,7 +409,20 @@ def _run():
     check("window tools list the software, Altium with its documents",
           tools9.startswith("Altium (") and "Buttons.SchDoc" in tools9 and "ESC_Board.PcbDoc" in tools9
           and "Edge" in tools9 and "Claude" not in tools9, tools9)
+    work_before9 = _rp.summary(c9, cfg9, day, now=end9)["work_s"]
+    pre = _rp.absorbed(c9, cfg9, start + 60, start + 300)
+    check("preview lists the records the window will absorb",
+          pre["count"] == 3 and abs(pre["work_s"] - 240) < 1 and not pre["replaces"],
+          str([(g["tool"], g["what"], round(g["secs"])) for g in pre["records"]]))
     mid = store.add_manual(c9, start + 60, start + 300, pj9, "library_footprint", "BTN7960 footprint", tools9)
+    sm_m = _rp.summary(c9, cfg9, day, now=end9)
+    ent = [m for m in sm_m["manual"] if m["id"] == mid][0]
+    check("the log keeps its absorbed records for display",
+          ent["absorbed"]["count"] == 3 and abs(ent["absorbed"]["work_s"] - 240) < 1)
+    check("absorbed records are not counted twice", abs(sm_m["work_s"] - work_before9) < 1,
+          "%.0f vs %.0f" % (sm_m["work_s"], work_before9))
+    check("a later log in the same window says it replaces the earlier one",
+          len(_rp.absorbed(c9, cfg9, start + 200, start + 260)["replaces"]) == 1)
     sm9 = _rp.summary(c9, cfg9, day, now=end9)
     mrow = [r for r in sm9["cad"]["rows"] if r["item"] == "BTN7960 footprint"]
     check("window merge is one Altium row with tools in Detected",

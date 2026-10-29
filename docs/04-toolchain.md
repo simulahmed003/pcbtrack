@@ -44,7 +44,7 @@ docs/                this folder
 ## Development loop
 
 ```
-python tests/replay_day.py        # 71 checks, must print "0 check(s) failed"
+python tests/replay_day.py        # 75 checks, must print "0 check(s) failed"
 python -m pcbtrack doctor         # setup check (reports Altium gaps)
 PCBTRACK_DATA=/tmp/x python -m pcbtrack report
 ```

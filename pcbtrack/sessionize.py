@@ -28,7 +28,7 @@ def _row(r, a, b):
     }
 
 
-def intervals(conn, t0, t1, join_gap=11.0):
+def intervals(conn, t0, t1, join_gap=11.0, overlays=True):
     """Deduplicated, non-overlapping intervals clipped to [t0,t1).
 
     Overlap happens when more than one collector wrote at once; the baseline
@@ -57,7 +57,10 @@ def intervals(conn, t0, t1, join_gap=11.0):
         "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"
         " WHERE o.t1>=? AND o.t0<? ORDER BY o.t0, o.id",
         (t0 - join_gap, t1)).fetchall()
-    manual = sorted((r for r in rows if r["collector"] in OVERLAYS), key=lambda r: r["id"])
+    # overlays=False gives only what was tracked: used to list the records a
+    # hand entry or merge absorbed, without counting them a second time
+    manual = sorted((r for r in rows if r["collector"] in OVERLAYS),
+                    key=lambda r: r["id"]) if overlays else []
     auto = [r for r in rows if r["collector"] not in OVERLAYS]
 
     out = []

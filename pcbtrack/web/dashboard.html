@@ -55,6 +55,7 @@ tr.guess td{background:var(--gbg)}tr.guess td:first-child{box-shadow:inset 3px 0
 .alt td{font-size:13px}.alt .st{display:inline-block;font-size:11px;border-radius:999px;padding:0 7px;margin:1px 3px 1px 0;color:#fff}
 .big{font-size:26px;font-weight:600}
 details.card summary{cursor:pointer;list-style:revert}
+details.absorbed{margin-top:4px}details.absorbed summary{cursor:pointer}details.absorbed table{margin-top:4px;font-size:12px}
 details.danger{margin-top:16px;border:1px solid #dc2626;border-radius:10px;padding:10px 12px}
 details.danger summary{cursor:pointer;color:#dc2626;font-weight:600}
 .dz{border-top:1px solid var(--line);padding:10px 0}.dz .grid{margin-top:6px}
@@ -252,6 +253,11 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   </div>
 </div>
 
+<dialog id="approveDlg"><h2 id="apTitle"></h2>
+  <div class="sub" id="apInfo" style="margin-bottom:10px"></div>
+  <div id="apList" style="max-height:300px;overflow:auto;margin-bottom:10px"></div>
+  <div class="flex"><button class="p" id="apOk">Approve &amp; merge</button><button id="apCancel">Cancel</button></div>
+</dialog>
 <dialog id="mergeDlg"><h2 id="mgTitle"></h2>
   <div class="sub" id="mgList" style="margin-bottom:10px;max-height:180px;overflow:auto"></div>
   <div class="grid">
@@ -463,7 +469,8 @@ function drawManual(){
   const m=D.manual||[];
   $('manual').innerHTML=m.map(x=>`<div class="item"><div><b>${HH(x.t0)}&ndash;${HH(x.t1)}</b> (${F(x.t1-x.t0)})
     &middot; ${esc(x.stage)}${x.project?` &middot; <b>${esc(x.project)}</b>`:''}<div class="sub">${esc(x.text)}</div>
-    ${x.tools?`<div class="sub">Merged: ${esc(x.tools)}</div>`:''}</div>
+    ${x.tools?`<div class="sub">Merged: ${esc(x.tools)}</div>`:''}
+    ${x.absorbed&&x.absorbed.count?`<details class="absorbed"><summary class="sub">${x.absorbed.count} tracked record(s) merged into this (${F(x.absorbed.work_s)}, counted once)</summary>${absorbedTable(x.absorbed)}</details>`:''}</div>
     <button class="x" data-del="${x.id}" title="remove">${x.tools?'undo merge':'remove'}</button></div>`).join('');
   $('manual').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
     if(!confirm('Remove this entry? Whatever was tracked in that window shows again.'))return;
@@ -588,7 +595,28 @@ $('mAdd').onclick=async()=>{
   const b={date:$('mDate').value,start:$('mStart').value,end:$('mEnd').value,
     project_id:$('mProj').value||null,stage:$('mStage').value,text:$('mText').value.trim()};
   if(!b.date||!b.start||!b.end){alert('Pick a date, a start and an end time');return}
-  const r=await post('/api/manual',b); if(r.ok){$('mText').value='';load()}};
+  // preview first: show what this window will absorb and ask for approval
+  const p=await (await fetch(`/api/absorb?date=${b.date}&start=${b.start}&end=${b.end}`)).json();
+  if(p.error){alert(p.error);return}
+  if(!p.count&&!p.replaces.length){const r=await post('/api/manual',b); if(r.ok){$('mText').value='';load()} return}
+  PENDING=b;
+  $('apTitle').textContent=`${b.start}–${b.end} (${F(p.window_s)}): merge ${p.count} tracked record(s) into this log?`;
+  $('apInfo').innerHTML=`<b>${F(p.work_s)}</b> of tracked work${p.idle_s?` and ${F(p.idle_s)} idle`:''} will become one block:
+    <b>${esc(b.text||'(no description)')}</b>, ${esc(b.stage)}${b.project_id?', '+esc($('mProj').selectedOptions[0].text):''}.
+    The whole window (${F(p.window_s)}) counts as this work, once. The records stay visible under the log, and <b>undo merge</b> brings them back.`+
+    (p.replaces.length?`<div class="warn" style="margin-top:6px">It also replaces the overlapping part of ${p.replaces.length} earlier log(s): ${
+      p.replaces.map(x=>esc(x.text||x.stage)+' ('+HH(x.t0)+'–'+HH(x.t1)+')').join(', ')}</div>`:'');
+  $('apList').innerHTML=absorbedTable(p);
+  $('approveDlg').showModal()};
+let PENDING=null;
+function absorbedTable(p){
+  if(!p.count)return '<div class="sub">No tracked records in this window.</div>';
+  return '<table><tr><th>Program</th><th>Page / document</th><th>When</th><th class="n">Time</th></tr>'+
+    p.records.map(g=>`<tr><td>${esc(g.tool)}</td><td>${esc(g.what)}</td><td class="muted" style="white-space:nowrap">${HH(g.first)}&ndash;${HH(g.last)}</td><td class="n">${F(g.secs)}</td></tr>`).join('')+
+    (p.more?`<tr><td colspan="4" class="muted">&hellip; and ${p.more} more</td></tr>`:'')+'</table>'}
+$('apOk').onclick=async()=>{const b=PENDING; $('approveDlg').close(); if(!b)return;
+  const r=await post('/api/manual',b); PENDING=null; if(r.ok){$('mText').value='';load()}};
+$('apCancel').onclick=()=>{PENDING=null;$('approveDlg').close()};
 
 $('noteAdd').onclick=async()=>{const t=$('noteText').value.trim();if(!t)return;
   await post('/api/note',{day:$('nFrom').value||$('date').value,day_to:$('nTo').value||null,
@@ -694,5 +722,5 @@ let dirty=false;
 const _load=load; load=async()=>{dirty=false;return _load()};
 load(); tick();
 setInterval(tick,5000);    // live strip: a few hundred bytes
-setInterval(()=>{if(!dirty&&!$('dlg').open&&!$('splitDlg').open&&!$('mergeDlg').open)load()},60000);   // full day rebuild
+setInterval(()=>{if(!dirty&&!$('dlg').open&&!$('splitDlg').open&&!$('mergeDlg').open&&!$('approveDlg').open)load()},60000);   // full day rebuild
 </script></body></html>

@@ -132,9 +132,16 @@ and describe it.
 - **If nothing was tracked** (meeting, milling, soldering, reading on paper),
   it is simply added.
 
-Entries are listed below the form; **undo merge** / **remove** puts back
-whatever was tracked in that window. A merge that includes Altium counts as
-Altium time.
+Before anything changes, **an approve dialog lists every tracked record in
+the window** (program, page or document, when, how long) and says whether an
+earlier log overlaps. Nothing is merged until you press **Approve & merge**.
+The whole window then counts as your entry, once.
+
+Entries are listed below the form. Each one has a folding list
+*"N tracked record(s) merged into this"* showing what it replaced, for
+reference only; those minutes are not counted again. **undo merge** /
+**remove** puts back whatever was tracked in that window. A merge that
+includes Altium counts as Altium time.
 
 ## 8. Review
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1 - 2026-10-29
+Added
+- Approve before merging: "Add / merge" first shows every tracked record
+  inside the window (program, page/document, when, time) and any earlier log
+  it overlaps; nothing changes until "Approve & merge" (`GET /api/absorb`).
+- Under each log, a folding list of the tracked records it absorbed, read
+  from the tracked layer only, so they are shown but never counted twice.
+
 ## 0.10.0 - 2026-10-29
 Added
 - Merge a time window: "Add or merge time" takes from/to; everything

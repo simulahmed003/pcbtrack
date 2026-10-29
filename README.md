@@ -21,7 +21,7 @@ short note per project, and export a report for yourself or your client.
 - **Honest.** Every automatic label is marked as a guess until you confirm it,
   and reports say how much of the time you confirmed.
 
-> Status: **v0.10.0**, in daily use by the author since October 2026. Windows
+> Status: **v0.10.1**, in daily use by the author since October 2026. Windows
 > only for live tracking. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
@@ -131,7 +131,7 @@ Details: [docs/03-architecture.md](docs/03-architecture.md) and
 - Why each version looks the way it does: [docs/10-version-analysis.md](docs/10-version-analysis.md)
 - Open questions and next experiments: [docs/08-open-questions.md](docs/08-open-questions.md)
 
-Run the tests (71 checks over a synthetic workday, no Windows needed):
+Run the tests (75 checks over a synthetic workday, no Windows needed):
 
 ```bash
 python tests/replay_day.py
