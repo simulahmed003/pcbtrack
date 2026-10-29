@@ -43,6 +43,9 @@ DEFAULTS = {
     "hidden_stages": [],
     "merge_library_stages_in_report": False,
     "daily_target_hours": 5,
+    # the dashboard restarts a tracker that stopped without being asked;
+    # set false for a test dashboard pointed at a copy of the data
+    "watchdog": True,
     "doctype_stage": {
         "SCH": "schematic",
         # an open PcbDoc says "PCB work", not which part of it: placement vs

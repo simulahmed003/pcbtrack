@@ -7,7 +7,7 @@ Nothing is double counted; a second belongs to one state and one project.
 import datetime as dt
 
 STATES = ("work", "idle", "locked", "off")
-OVERLAYS = ("manual", "split")
+OVERLAYS = ("manual", "split", "merge")
 
 
 def day_window(day, cutover=0):
@@ -24,6 +24,7 @@ def _row(r, a, b):
         "guess": r["project_guess"] or 0,
         "reason": r["reason"] if "reason" in r.keys() else "",
         "collector": r["collector"] if "collector" in r.keys() else None,
+        "tools": r["tools"] if "tools" in r.keys() else None,
     }
 
 
@@ -45,10 +46,12 @@ def intervals(conn, t0, t1, join_gap=11.0):
       'manual' - hand-entered: "14:00-16:00 studying"
       'split'  - a piece of tracked time the user moved to another project
                  (keeps the app, document and stage of what was tracked)
+      'merge'  - several rows the user joined into one block (one project,
+                 one stage; the software used is kept in `tools`)
     The tracked rows underneath are never changed, so an overlay can always
     be removed to get back what was observed."""
     rows = conn.execute(
-        "SELECT o.id,o.t0,o.t1,o.state,o.app,o.title,o.wclass,o.collector,"
+        "SELECT o.id,o.t0,o.t1,o.state,o.app,o.title,o.wclass,o.collector,o.tools,"
         "       l.project_id,l.stage,l.doc,l.confidence,l.source,l.reason,"
         "       COALESCE(l.project_guess,0) project_guess"
         "  FROM obs o LEFT JOIN labels l ON l.obs_id=o.id"

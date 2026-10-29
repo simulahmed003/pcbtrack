@@ -101,12 +101,15 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   </div>
   <div class="sub" style="margin:4px 0 6px"><b>Detected</b> is what was on screen (a fact). <b>Work stage</b> is the tracker's guess
   <span class="pill gp">amber</span> until you pick one; picking relabels that whole row.</div>
+  <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="aDocs" disabled>Merge selected rows</button>
+    <span class="sub">tick two or more rows to join them into one, with one project and work stage</span></div>
   <div class="tw"><table class="alt" id="aDocs"></table></div>
 </details>
 
 <details class="card" id="otherCard"><summary><h2 style="display:inline">Other software</h2>
   <span class="sub" id="oTot"></span></summary>
   <div class="sub" style="margin:8px 0 6px">Pages and windows outside Altium, same columns. Lower priority: fix them when it matters.</div>
+  <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="oRows" disabled>Merge selected rows</button></div>
   <div class="tw"><table class="alt" id="oRows"></table></div>
 </details>
 
@@ -118,9 +121,10 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <div class="sub" style="margin-top:9px" id="legend"></div>
 </div>
 
-<div class="card"><h2>Add time by hand</h2>
-  <div class="sub" style="margin-bottom:8px">Study, meetings, milling, soldering, or any period the tracker got wrong.
-  A hand entry replaces tracked time for the same minutes.</div>
+<div class="card"><h2>Add or merge time</h2>
+  <div class="sub" style="margin-bottom:8px">Pick a time window. Everything tracked inside it is <b>merged into one block</b>
+  with the project and stage you choose (blocks crossing the edges are split there), and the software used is kept as a
+  comma list. With nothing tracked in the window it is simply added: meetings, milling, soldering, study.</div>
   <div class="grid">
     <label>Date<input type="date" id="mDate"></label>
     <label>From<input type="time" id="mStart"></label>
@@ -130,7 +134,7 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   </div>
   <div class="flex" style="margin-top:8px">
     <input id="mText" placeholder="what you did, e.g. read BTN7960 datasheet / client call" style="flex:1 1 260px">
-    <button class="p" id="mAdd">Add time</button>
+    <button class="p" id="mAdd">Add / merge</button>
   </div>
   <div id="manual" style="margin-top:8px"></div>
 </div>
@@ -248,6 +252,16 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   </div>
 </div>
 
+<dialog id="mergeDlg"><h2 id="mgTitle"></h2>
+  <div class="sub" id="mgList" style="margin-bottom:10px;max-height:180px;overflow:auto"></div>
+  <div class="grid">
+    <label>Project<select id="mgProj" class="projsel"></select></label>
+    <label>Work stage<select id="mgStage" class="stagesel"></select></label>
+  </div>
+  <label class="lab" style="margin-top:8px">Note (optional)<input id="mgNote" placeholder="e.g. footprint for BTN7960 incl. datasheet reading"></label>
+  <div class="sub" style="margin:8px 0">The software of all selected rows is kept as one comma list. <b>undo merge</b> brings the rows back.</div>
+  <div class="flex"><button class="p" id="mgSave">Merge</button><button id="mgCancel">Cancel</button></div>
+</dialog>
 <dialog id="splitDlg"><h2 id="splitTitle"></h2>
   <div id="splitLines"></div>
   <div class="flex" style="margin:6px 0"><button class="s" id="splitAdd">+ add project</button></div>
@@ -301,14 +315,15 @@ const SCOL={schematic:'#2563eb',library_symbol:'#7c3aed',library_footprint:'#c02
 const stageCol=s=>SCOL[s]||'#64748b';
 function rowsTable(rows,saves,empty){
   if(!rows.length)return `<tr><td class="muted">${empty}</td></tr>`;
-  const nc=saves?7:6;
-  let h=`<tr><th>When</th><th>${saves?'Document':'Page or window'}</th><th>Project</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
+  const nc=saves?8:7;
+  let h=`<tr><th title="tick rows to merge them"></th><th>When</th><th>${saves?'Document':'Page or window'}</th><th>Project</th><th>Detected</th><th>Work stage</th>${saves?'<th class="n">Saves</th>':''}<th class="n">Time</th></tr>`, last=null;
   rows.forEach((r,i)=>{
     if(r.project!==last){const pt=rows.filter(x=>x.project===r.project).reduce((x,y)=>x+y.secs,0);
       h+=`<tr class="pgh${COLL.has(r.project)?' closed':''}" data-g="${esc(r.project)}"><td colspan="${nc-1}"><b>${esc(r.project)}</b></td><td class="n"><b>${F(pt)}</b></td></tr>`;last=r.project}
     const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'';
-    h+=`<tr class="${r.confirmed?'':'guess'}" data-in="${esc(r.project)}"${COLL.has(r.project)?' hidden':''}><td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
-        <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}</div></td>
+    h+=`<tr class="${r.confirmed?'':'guess'}" data-in="${esc(r.project)}"${COLL.has(r.project)?' hidden':''}><td><input type="checkbox" class="rowpick" data-i="${i}" title="select to merge"></td>
+      <td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
+        <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}${r.merge_ids?`<button class="x rowunmerge" data-i="${i}">undo merge</button>`:''}</div></td>
       <td><select class="rowproj projsel" data-i="${i}">${projOpts(pid)}</select></td>
       <td class="muted">${esc(r.detected)}</td>
       <td><select class="rs rowstage" data-i="${i}">${stageOpts(r.stage)}</select>${r.confirmed?'':' <span class="pill gp">guess</span>'}</td>
@@ -331,7 +346,30 @@ function bindRows(tbl,rows){
   tbl.querySelectorAll('.rowundo').forEach(b=>b.onclick=async()=>{
     if(!confirm('Undo the split for this row? The time goes back to what was tracked.'))return;
     await post('/api/split/undo',{ids:rows[+b.dataset.i].split_ids}); load()});
+  tbl.querySelectorAll('.rowunmerge').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Undo this merge? The original rows come back.'))return;
+    await post('/api/merge/undo',{ids:rows[+b.dataset.i].merge_ids}); load()});
+  tbl._rows=rows;
+  const btn=document.querySelector(`.mergebtn[data-t="${tbl.id}"]`);
+  const upd=()=>{const n=tbl.querySelectorAll('.rowpick:checked').length;
+    if(btn){btn.disabled=n<2;btn.textContent=n>=2?`Merge ${n} selected rows`:'Merge selected rows'}};
+  tbl.querySelectorAll('.rowpick').forEach(c=>c.onchange=()=>{dirty=true;upd()}); upd();
 }
+
+// ---- merge ticked rows into one ----
+let MERGE=null;
+function openMerge(tblId){
+  const tbl=$(tblId), rows=tbl._rows||[], pick=[...tbl.querySelectorAll('.rowpick:checked')].map(c=>rows[+c.dataset.i]);
+  if(pick.length<2)return;
+  MERGE=pick;
+  const tot=pick.reduce((x,r)=>x+r.secs,0), byP={}, byS={};
+  pick.forEach(r=>{byP[r.project]=(byP[r.project]||0)+r.secs;byS[r.stage]=(byS[r.stage]||0)+r.secs});
+  const topP=Object.entries(byP).sort((a,b)=>b[1]-a[1])[0][0], topS=Object.entries(byS).sort((a,b)=>b[1]-a[1])[0][0];
+  $('mgTitle').textContent=`Merge ${pick.length} rows (${F(tot)}) into one`;
+  $('mgList').innerHTML=pick.map(r=>`<div>&bull; ${HH(r.first)}&ndash;${HH(r.last)} ${esc(r.item)} <span class="muted">(${esc(r.detected)}, ${F(r.secs)})</span></div>`).join('');
+  $('mgProj').innerHTML=projOpts((D.projects.find(p=>p.name===topP)||{}).id||'','(no project)');
+  $('mgStage').innerHTML=stageOpts(topS); $('mgNote').value='';
+  $('mergeDlg').showModal()}
 
 // ---- split one row's time between projects ----
 let SPLIT=null;
@@ -424,10 +462,11 @@ function drawProjDocs(){
 function drawManual(){
   const m=D.manual||[];
   $('manual').innerHTML=m.map(x=>`<div class="item"><div><b>${HH(x.t0)}&ndash;${HH(x.t1)}</b> (${F(x.t1-x.t0)})
-    &middot; ${esc(x.stage)}${x.project?` &middot; <b>${esc(x.project)}</b>`:''}<div class="sub">${esc(x.text)}</div></div>
-    <button class="x" data-del="${x.id}" title="remove">remove</button></div>`).join('');
+    &middot; ${esc(x.stage)}${x.project?` &middot; <b>${esc(x.project)}</b>`:''}<div class="sub">${esc(x.text)}</div>
+    ${x.tools?`<div class="sub">Merged: ${esc(x.tools)}</div>`:''}</div>
+    <button class="x" data-del="${x.id}" title="remove">${x.tools?'undo merge':'remove'}</button></div>`).join('');
   $('manual').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Remove this hand entry?'))return;
+    if(!confirm('Remove this entry? Whatever was tracked in that window shows again.'))return;
     await post('/api/manual/delete',{id:+b.dataset.del});load()});
 }
 
@@ -616,6 +655,14 @@ document.querySelectorAll('[data-dz]').forEach(btn=>btn.onclick=async()=>{
 $('full24').onchange=()=>drawTimeline();
 $('splitAdd').onclick=()=>{$('splitLines').insertAdjacentHTML('beforeend',splitLine('',0));splitTotal()};
 $('splitCancel').onclick=()=>$('splitDlg').close();
+document.querySelectorAll('.mergebtn').forEach(b=>b.onclick=()=>openMerge(b.dataset.t));
+$('mgCancel').onclick=()=>$('mergeDlg').close();
+$('mgSave').onclick=async()=>{
+  if(!MERGE||MERGE.length<2){$('mergeDlg').close();return}
+  const ids=MERGE.flatMap(r=>r.ids), pv=$('mgProj').value, sv=$('mgStage').value;
+  const r=await post('/api/merge',{date:$('date').value,ids,project_id:pv===NEW?null:(pv||null),
+    stage:sv===NEW?'unknown':sv,note:$('mgNote').value.trim()});
+  $('mergeDlg').close(); if(!r.ok)alert('Nothing was merged'); load()};
 $('splitSave').onclick=async()=>{
   const parts=[...$('splitLines').querySelectorAll('.sl')].map(l=>({project_id:l.querySelector('.slp').value===NEW?null:(l.querySelector('.slp').value||null),minutes:+l.querySelector('.slm').value||0}));
   const r=await post('/api/split',{date:$('date').value,ids:SPLIT.ids,parts});
@@ -647,5 +694,5 @@ let dirty=false;
 const _load=load; load=async()=>{dirty=false;return _load()};
 load(); tick();
 setInterval(tick,5000);    // live strip: a few hundred bytes
-setInterval(()=>{if(!dirty&&!$('dlg').open&&!$('splitDlg').open)load()},60000);   // full day rebuild
+setInterval(()=>{if(!dirty&&!$('dlg').open&&!$('splitDlg').open&&!$('mergeDlg').open)load()},60000);   // full day rebuild
 </script></body></html>

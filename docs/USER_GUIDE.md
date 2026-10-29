@@ -88,6 +88,17 @@ library, press **split...** under the document name:
 was tracked. The original tracking is never changed by a split, so undo is
 always possible.
 
+### Merging rows into one
+
+When several rows were really one piece of work (a footprint plus the
+datasheet you read for it plus a schematic fix), tick the box at the left of
+each row and press **Merge N selected rows** above the table (Altium and
+Other software both have one). Choose one project, one work stage and an
+optional note, then **Merge**. The rows become one row; its *Detected*
+column lists every tool, comma-separated, e.g.
+`Merged: Altium (Buttons.SchDoc, ESC_Board.PcbDoc), Edge`.
+**undo merge** on that row brings the original rows back.
+
 ### What pcbtrack cannot know
 
 Inside the PCB editor it sees "PCB editor", not whether you were placing,
@@ -108,13 +119,22 @@ locked, grey not tracked, blue added by hand, striped amber where the project
 was guessed. The thinner lane below shows only Altium time, coloured by work
 stage. Hover over any part for details.
 
-## 7. Add time by hand
+## 7. Add or merge time
 
-For work the PC cannot see (meetings, milling, soldering, assembly, reading
-on paper) or a stretch the tracker got wrong. Pick the date, from and to
-times, project and stage, and describe it. A hand entry **replaces** tracked
-time for the same minutes. Entries are listed below the form and can be
-removed.
+Pick the date, a **from** and **to** time, the project and the work stage,
+and describe it.
+
+- **If the PC tracked work in that window**, all of it is **merged into one
+  block** with your project and stage. Blocks that cross the window's edges
+  are split there: only the part inside is merged, the rest stays as it was.
+  The software used in the window is kept as a comma list, for example
+  `Merged: Altium (BTN7960.PcbLib, Power.SchDoc), Edge, Acrobat`.
+- **If nothing was tracked** (meeting, milling, soldering, reading on paper),
+  it is simply added.
+
+Entries are listed below the form; **undo merge** / **remove** puts back
+whatever was tracked in that window. A merge that includes Altium counts as
+Altium time.
 
 ## 8. Review
 

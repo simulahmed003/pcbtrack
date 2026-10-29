@@ -24,6 +24,7 @@ class H(BaseHTTPRequestHandler):
     GET  /api/markdown     day report text;  /api/export  write day files
     POST /api/label        set project / stage for block ids
     POST /api/split        split a row between projects; /api/split/undo
+    POST /api/merge        join selected rows into one; /api/merge/undo
     POST /api/manual       hand entry; /api/manual/delete
     POST /api/daynote      the one note per project per day
     POST /api/note         period note; /api/note/delete
@@ -183,10 +184,11 @@ class H(BaseHTTPRequestHandler):
                 b = dt.datetime.combine(day, dt.time.fromisoformat(body["end"]))
                 if b <= a:
                     b += dt.timedelta(days=1)          # past midnight
+                tools = report.window_tools(c, CFG, a.timestamp(), b.timestamp())
                 oid = store.add_manual(c, a.timestamp(), b.timestamp(),
                                        body.get("project_id") or None,
                                        body.get("stage") or "unknown",
-                                       (body.get("text") or "")[:200])
+                                       (body.get("text") or "")[:200], tools)
                 return self._send(200, {"ok": True, "id": oid})
             if u.path == "/api/tracker":
                 from . import tracker
@@ -211,6 +213,16 @@ class H(BaseHTTPRequestHandler):
                          for p in body.get("parts", [])]
                 n = report.split_row(c, CFG, day, [int(i) for i in body["ids"]], parts)
                 return self._send(200, {"ok": n > 0, "pieces": n})
+            if u.path == "/api/merge":
+                day = dt.date.fromisoformat(body["date"])
+                n = report.merge_rows(c, CFG, day, [int(i) for i in body["ids"]],
+                                      body.get("project_id") or None,
+                                      body.get("stage") or "unknown",
+                                      (body.get("note") or "").strip())
+                return self._send(200, {"ok": n > 0, "pieces": n})
+            if u.path in ("/api/split/undo", "/api/merge/undo"):
+                n = store.delete_splits(c, [int(i) for i in body["ids"]])
+                return self._send(200, {"ok": True, "removed": n})
             if u.path == "/api/split/undo":
                 n = store.delete_splits(c, [int(i) for i in body["ids"]])
                 return self._send(200, {"ok": True, "removed": n})
@@ -389,7 +401,8 @@ def serve(cfg=None, open_browser=True):
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
-        threading.Thread(target=_watchdog, daemon=True).start()
+        if CFG.get("watchdog", True):     # off for test dashboards on copied data
+            threading.Thread(target=_watchdog, daemon=True).start()
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")

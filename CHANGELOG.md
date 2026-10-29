@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.0 - 2026-10-29
+Added
+- Merge a time window: "Add or merge time" takes from/to; everything
+  tracked inside becomes one block with one project and stage, blocks
+  crossing the edges are split there, and the software used is kept as a
+  comma list (`obs.tools`), e.g. "Altium (Buttons.SchDoc, ESC_Board.PcbDoc), Edge".
+- Merge selected rows: tick rows in the Altium or Other software table,
+  "Merge N selected rows", pick one project / stage / note. 'merge' overlays
+  over the untouched tracked rows; "undo merge" restores them.
+- Merges and hand entries whose tools include Altium count as Altium time.
+- Detail CSV has a `tools` column.
+
+Fixed
+- The Windows lock screen (LockApp.exe, LogonUI.exe) counted as work.
+- A window without a program name showed as "?" in tool lists.
+
 ## 0.9.1 - 2026-10-24
 Fixed
 - The tracker could stop silently when running in the background: under

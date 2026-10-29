@@ -21,7 +21,7 @@ short note per project, and export a report for yourself or your client.
 - **Honest.** Every automatic label is marked as a guess until you confirm it,
   and reports say how much of the time you confirmed.
 
-> Status: **v0.9.1**, in daily use by the author since October 2026. Windows
+> Status: **v0.10.0**, in daily use by the author since October 2026. Windows
 > only for live tracking. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
@@ -54,7 +54,8 @@ Full guide, including portable (USB) mode and troubleshooting:
 | While working | Nothing. Work in Altium as usual. |
 | End of the day | Open `dashboard.bat`. In **Altium today**, check each document's **Work stage** and **Project** (amber = guess) and fix any that are wrong. |
 | | Write a line in **Daily notes** for each project: what got done. |
-| Off the PC (meeting, milling, soldering, study) | **Add time by hand**. |
+| Off the PC (meeting, milling, soldering, study) | **Add or merge time** with the from/to time. |
+| One task spread over several rows or programs | **Add or merge time** for its window, or tick the rows and **Merge selected rows**: one block, one stage, tools listed comma-separated. |
 | End of the week / for a client | **Report for a period**: pick dates and projects, download Markdown or CSV, or one report per project as a ZIP. |
 | Taking a break from tracking | **Stop tracking** on the dashboard, or `stop.bat`. Start again with **Start tracking** or `track.bat`. |
 
@@ -130,7 +131,7 @@ Details: [docs/03-architecture.md](docs/03-architecture.md) and
 - Why each version looks the way it does: [docs/10-version-analysis.md](docs/10-version-analysis.md)
 - Open questions and next experiments: [docs/08-open-questions.md](docs/08-open-questions.md)
 
-Run the tests (63 checks over a synthetic workday, no Windows needed):
+Run the tests (71 checks over a synthetic workday, no Windows needed):
 
 ```bash
 python tests/replay_day.py

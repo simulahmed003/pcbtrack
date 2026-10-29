@@ -130,7 +130,10 @@ def run(cfg=None, probe=None, max_ticks=None, quiet=False):
                     last_scan = t
 
                 # ---- state ----
-                if s.locked:
+                # The lock screen (LockApp.exe) can be in front a few seconds
+                # before the secure desktop takes over; it counted as work on
+                # 25-26 Oct 2026. LogonUI is the password screen.
+                if s.locked or (s.app or "").lower() in ("lockapp.exe", "logonui.exe"):
                     state, app, title, wclass = "locked", "", "", ""
                 elif s.idle >= idle_after:
                     state, app, title, wclass = "idle", "", "", ""

@@ -388,6 +388,58 @@ def _run():
     check("deleting a day removes its work", sm9["work_s"] == 0, "%.0fs" % sm9["work_s"])
     c6.close()
 
+    # --- merging: a time window, and selected rows ---
+    tmp9 = tempfile.mkdtemp()
+    cfg9 = config.load()
+    cfg9["_data_dir"] = tmp9
+    cfg9["port"] = 18888
+    s9 = [(120, "X2.EXE", ALT, TD, 2, False, "Buttons.SchDoc", "SCH", "document tab"),
+          (120, "msedge.exe", "BTN7960 datasheet.pdf - Microsoft Edge", "Chrome_WidgetWin_1", 2, False),
+          (120, "X2.EXE", ALT, TD, 2, False, "ESC_Board.PcbDoc", "PCB", "document tab"),
+          (120, "claude.exe", "Claude", "Chrome_WidgetWin_1", 2, False),
+          (60, "LockApp.exe", "Windows Default Lock Screen", "Windows.UI.Core.CoreWindow", 2, False)]
+    tracker.run(cfg=cfg9, probe=Replay(s9, t0=start),
+                max_ticks=sum(x[0] for x in s9) // tick, quiet=True)
+    c9 = store.connect(store.db_path(cfg9))
+    end9 = start + 480
+    pj9 = store.create_project(c9, "Buck converter")
+    # window 01:00-05:00 cuts into the first and third blocks
+    tools9 = _rp.window_tools(c9, cfg9, start + 60, start + 300)
+    print("   window tools:", tools9)
+    check("window tools list the software, Altium with its documents",
+          tools9.startswith("Altium (") and "Buttons.SchDoc" in tools9 and "ESC_Board.PcbDoc" in tools9
+          and "Edge" in tools9 and "Claude" not in tools9, tools9)
+    mid = store.add_manual(c9, start + 60, start + 300, pj9, "library_footprint", "BTN7960 footprint", tools9)
+    sm9 = _rp.summary(c9, cfg9, day, now=end9)
+    mrow = [r for r in sm9["cad"]["rows"] if r["item"] == "BTN7960 footprint"]
+    check("window merge is one Altium row with tools in Detected",
+          len(mrow) == 1 and abs(mrow[0]["secs"] - 240) < 1 and mrow[0]["detected"].startswith("Merged: Altium"),
+          str([(r["item"], r["detected"], round(r["secs"])) for r in sm9["cad"]["rows"]]))
+    left = {r["item"]: round(r["secs"]) for r in sm9["cad"]["rows"]}
+    check("blocks crossing the window edges are split, outside parts kept",
+          abs(left.get("Buttons.SchDoc", 0) - 60) <= 6 and abs(left.get("ESC_Board.PcbDoc", 0) - 60) <= 6, str(left))
+    ok9, g9, w9 = sessionize.check_invariant(report_load(c9, cfg9, day, end9)[0], t0, t1, now=end9)
+    check("24h accounting exact after a window merge", ok9, "%.0fs vs %.0fs" % (g9, w9))
+    store.delete_manual(c9, mid)
+    # row merge: Buttons.SchDoc + ESC_Board.PcbDoc rows into one
+    rows9 = _rp.summary(c9, cfg9, day, now=end9)["cad"]["rows"]
+    ids9 = [i for r in rows9 if r["item"] in ("Buttons.SchDoc", "ESC_Board.PcbDoc") for i in r["ids"]]
+    _rp.merge_rows(c9, cfg9, day, ids9, pj9, "schematic", "power stage rework")
+    sm10 = _rp.summary(c9, cfg9, day, now=end9)
+    mg = [r for r in sm10["cad"]["rows"] if r["item"] == "power stage rework"]
+    check("row merge gives one row, one stage, tools comma list",
+          len(mg) == 1 and mg[0]["stage"] == "schematic" and abs(mg[0]["secs"] - 240) <= 10
+          and "Buttons.SchDoc, ESC_Board.PcbDoc" in mg[0]["detected"] and mg[0].get("merge_ids"),
+          str([(r["item"], r["detected"], round(r["secs"])) for r in sm10["cad"]["rows"]]))
+    check("tools list skips windows with no program", "?" not in mg[0]["detected"], mg[0]["detected"])
+    store.delete_splits(c9, mg[0]["merge_ids"])
+    back9 = {r["item"] for r in _rp.summary(c9, cfg9, day, now=end9)["cad"]["rows"]}
+    st9 = _rp.summary(c9, cfg9, day, now=end9 + 60)["states"]
+    check("the lock screen counts as locked, not work", st9.get("locked", 0) >= 50, str(st9))
+    check("undo merge brings the original rows back",
+          {"Buttons.SchDoc", "ESC_Board.PcbDoc"} <= back9 and "power stage rework" not in back9, str(back9))
+    c9.close()
+
     # a tick error under pythonw (no stderr) must not stop the tracker
     tmp8 = tempfile.mkdtemp()
     cfg8 = config.load()

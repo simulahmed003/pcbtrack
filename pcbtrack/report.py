@@ -59,7 +59,7 @@ def now_snapshot(conn, cfg):
                                           join_gap=cfg["tick_seconds"] * 2 + 1)
           if x["state"] == "work"]
     tot = sum(x["secs"] for x in iv)
-    cad_today = sum(x["secs"] for x in iv if (x["app"] or "").upper() in cad)
+    cad_today = sum(x["secs"] for x in iv if is_cad(x, set(cad)))
     lc = conn.execute(
         "SELECT o.t1,o.app,l.stage,l.doc,l.project_id FROM obs o"
         " LEFT JOIN labels l ON l.obs_id=o.id WHERE o.state='work'"
@@ -91,6 +91,97 @@ _BROWSER_TAIL = re.compile(
     r"\s+-\s+(Microsoft\W*Edge|Google Chrome|Mozilla Firefox|Brave|Opera)\s*$", re.I)
 
 
+TOOL_NAMES = {"X2.EXE": "Altium", "DXP.EXE": "Altium", "MSEDGE.EXE": "Edge",
+              "CHROME.EXE": "Chrome", "FIREFOX.EXE": "Firefox", "CLAUDE.EXE": "Claude",
+              "EXPLORER.EXE": "File Explorer", "EXCEL.EXE": "Excel",
+              "WINWORD.EXE": "Word", "ACRORD32.EXE": "Acrobat", "ACROBAT.EXE": "Acrobat",
+              "KICAD.EXE": "KiCad", "EESCHEMA.EXE": "KiCad", "PCBNEW.EXE": "KiCad",
+              "CODE.EXE": "VS Code", "WHATSAPP.ROOT.EXE": "WhatsApp",
+              "BRAVE.EXE": "Brave"}
+
+
+def tool_name(app):
+    a = (app or "").upper()
+    return TOOL_NAMES.get(a) or re.sub(r"(?i)\.exe$", "", app or "") or "?"
+
+
+def tools_of(xs):
+    """'Altium (ESC_Board.PcbDoc, Buttons.SchDoc), Edge, Acrobat' - the
+    software in a set of blocks, most-used first, with Altium documents in
+    brackets. Earlier merges contribute the tools they already list."""
+    secs, docs = {}, {}
+    for x in xs:
+        if x.get("tools"):
+            for part in _split_tools(x["tools"]):
+                secs[part] = secs.get(part, 0.0) + x["secs"]
+            continue
+        if x["app"] in ("manual", "merged") or not x["app"]:
+            continue
+        n = tool_name(x["app"])
+        secs[n] = secs.get(n, 0.0) + x["secs"]
+        if x["doc"]:
+            docs.setdefault(n, [])
+            if x["doc"] not in docs[n]:
+                docs[n].append(x["doc"])
+    out = []
+    for n, _ in sorted(secs.items(), key=lambda kv: -kv[1]):
+        out.append("%s (%s)" % (n, ", ".join(docs[n])) if docs.get(n) else n)
+    return ", ".join(out)
+
+
+def _split_tools(s):
+    """Split 'Altium (a, b), Edge' at top-level commas only."""
+    parts, depth, cur = [], 0, ""
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def is_cad(x, cadset):
+    """Design-tool time: Altium/KiCad blocks, and merges or hand entries whose
+    tools include a design tool."""
+    if (x["app"] or "").upper() in cadset:
+        return True
+    t = x.get("tools") or ""
+    return bool(t) and any(k in t for k in ("Altium", "KiCad", "EasyEDA"))
+
+
+def window_tools(conn, cfg, t0, t1):
+    """Tools used in [t0,t1): what a hand entry for that window absorbs."""
+    iv = sessionize.intervals(conn, t0, t1, join_gap=cfg["tick_seconds"] * 2 + 1)
+    return tools_of([x for x in iv if x["state"] == "work"])
+
+
+def merge_rows(conn, cfg, day, ids, project_id, stage, note):
+    """Join table rows into one block: every interval of those rows gets a
+    'merge' overlay with one project, one stage, the note, and the combined
+    tools list. Undo removes the whole group (store.delete_splits)."""
+    want = set(ids)
+    iv, _, _ = load_day(conn, cfg, day, backfill=False)
+    sel = sorted((x for x in iv if x["id"] in want and x["state"] == "work"),
+                 key=lambda x: x["t0"])
+    if not sel:
+        return 0
+    tools = tools_of(sel)
+    group = "%d" % (__import__("time").time() * 1000)
+    for x in sel:
+        store.add_merge(conn, x["t0"], x["t1"], project_id, stage, note, tools, group)
+    store.audit(conn, "merge_rows", list(ids),
+                {"project_id": project_id, "stage": stage, "tools": tools})
+    conn.commit()
+    return len(sel)
+
+
 def doctype_of(doc):
     ext = (doc or "").rsplit(".", 1)[-1].lower() if doc and "." in doc else ""
     return _EXT.get(ext)
@@ -99,7 +190,9 @@ def doctype_of(doc):
 def detected_of(x, cadset):
     """What was observably on screen - a fact, never edited by the user."""
     app = (x["app"] or "")
-    if app == "manual":
+    if app in ("manual", "merged"):
+        if x.get("tools"):
+            return "Merged: " + x["tools"]
         return "Added by hand"
     if app.upper() in cadset:
         reason = x.get("reason") or ""
@@ -121,9 +214,12 @@ def detail_rows(xs, cadset, names, proj_of, stage_of, saves=None):
     one dropdown can relabel a whole row."""
     rows = {}
     for x in xs:
-        cad = (x["app"] or "").upper() in cadset
-        item = (x["doc"] or "(no document)") if cad else (
-            x["title"] if x["app"] == "manual" else clean_title(x["title"]))
+        if x["app"] in ("manual", "merged"):
+            item = x["title"] or ("Merged work" if x.get("tools") else "Hand entry")
+        elif (x["app"] or "").upper() in cadset:
+            item = x["doc"] or "(no document)"
+        else:
+            item = clean_title(x["title"])
         key = (names.get(proj_of(x), "(unassigned)"), item, detected_of(x, cadset), stage_of(x))
         r = rows.setdefault(key, {"project": key[0], "item": key[1], "detected": key[2],
                                   "stage": key[3], "secs": 0.0, "ids": [],
@@ -137,6 +233,8 @@ def detail_rows(xs, cadset, names, proj_of, stage_of, saves=None):
             r["confirmed"] = False
         if x.get("collector") == "split":
             r["split_ids"] = r.get("split_ids", []) + [x["id"]]
+        if x.get("collector") == "merge":
+            r["merge_ids"] = r.get("merge_ids", []) + [x["id"]]
     out = sorted(rows.values(), key=lambda r: (r["project"] == "(unassigned)", r["project"], -r["secs"]))
     if saves is not None:
         for r in out:
@@ -204,7 +302,7 @@ def saves_by_doc(conn, t0, t1):
 def focus_stats(work, cadset, max_gap=120):
     """Altium focus: share of work time in the design tool, and the longest
     stretch of it where any break was shorter than max_gap seconds."""
-    cad = [x for x in work if (x["app"] or "").upper() in cadset]
+    cad = [x for x in work if is_cad(x, cadset)]
     best = cur = 0.0
     last_end = None
     for x in cad:
@@ -230,7 +328,7 @@ def week_totals(conn, cfg, day, now=None):
         for x in iv:
             if x["state"] == "work":
                 work += x["secs"]
-                if (x["app"] or "").upper() in cadset:
+                if is_cad(x, cadset):
                     cad += x["secs"]
         d += dt.timedelta(days=1)
     return {"from": start.isoformat(), "work_s": work, "cad_s": cad}
@@ -261,7 +359,7 @@ def summary(conn, cfg, day, now=None):
     unassigned = sum(x["secs"] for x in work if not x["project_id"])
     guessed = sum(x["secs"] for x in work if x.get("guess"))
     cadset = {a.upper() for a in cfg.get("cad_processes", [])}
-    cadw = [x for x in work if (x["app"] or "").upper() in cadset]
+    cadw = [x for x in work if is_cad(x, cadset)]
     cad_docs = {}
     for x in cadw:
         p = names.get(proj_of(x), "(unassigned)")
@@ -295,7 +393,7 @@ def summary(conn, cfg, day, now=None):
                                     saves_by_doc(conn, t0, t1)),
                 "switches": sum(1 for a, b in zip(cadw, cadw[1:]) if a["doc"] != b["doc"]),
                 **focus_stats(work, cadset)},
-        "other_rows": detail_rows([x for x in work if (x["app"] or "").upper() not in cadset],
+        "other_rows": detail_rows([x for x in work if not is_cad(x, cadset)],
                                   cadset, names, proj_of, stage_of),
         "week": week_totals(conn, cfg, day, now),
         "target_s": float(cfg.get("daily_target_hours", 5)) * 3600,
@@ -315,7 +413,7 @@ def summary(conn, cfg, day, now=None):
                       "doc": x["doc"], "app": x["app"],
                       "conf": round(x["confidence"], 2), "source": x["source"],
                       "guess": x.get("guess", 0), "id": x["id"],
-                      "cad": (x["app"] or "").upper() in cadset} for x in iv],
+                      "cad": is_cad(x, cadset)} for x in iv],
     }
 
 
@@ -339,7 +437,7 @@ def review_queue(conn, cfg, day, limit=60, now=None):
                 "stage": x["stage"], "project": names.get(x["project_id"], ""),
                 "project_id": x["project_id"], "conf": round(x["confidence"], 2),
                 "guess": x.get("guess", 0),
-                "cad": (x["app"] or "").upper() in cadset,
+                "cad": is_cad(x, cadset),
             })
     # design-tool blocks first, then biggest first
     out.sort(key=lambda r: (not r["cad"], -r["secs"]))
@@ -471,7 +569,8 @@ def range_summary(conn, cfg, d0, d1, project_ids=None, now=None):
             rows.append({"day": day.isoformat(), "t0": x["t0"], "t1": x["t1"],
                          "project": p, "stage": st, "doc": x["doc"] or "",
                          "app": x["app"] or "", "source": x["source"],
-                         "text": x["title"] if x["app"] == "manual" else ""})
+                         "text": x["title"] if x["app"] in ("manual", "merged") else "",
+                         "tools": x.get("tools") or ""})
         day += dt.timedelta(days=1)
 
     notes = [n for n in store.notes_between(conn, d0.isoformat(), d1.isoformat())
@@ -601,13 +700,14 @@ def range_csv(r, detail=False):
     w = csv.writer(f)
     if detail:
         w.writerow(["date", "start", "end", "minutes", "project", "stage",
-                    "document", "software", "label_source", "note"])
+                    "document", "software", "label_source", "note", "tools"])
         for x in r["rows"]:
             w.writerow([x["day"],
                         dt.datetime.fromtimestamp(x["t0"]).strftime("%H:%M:%S"),
                         dt.datetime.fromtimestamp(x["t1"]).strftime("%H:%M:%S"),
                         round((x["t1"] - x["t0"]) / 60.0, 2), x["project"],
-                        x["stage"], x["doc"], x["app"], x["source"], x["text"]])
+                        x["stage"], x["doc"], x["app"], x["source"], x["text"],
+                        x.get("tools", "")])
     else:
         w.writerow(["project", "stage", "hours", "minutes"])
         for p, stages in r["by_project_stage"].items():

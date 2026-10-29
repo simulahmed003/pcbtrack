@@ -23,7 +23,7 @@ What exists: Altium-first dashboard (Detected vs editable Work stage, project
 per row, split/undo, saves), other-software table, hand entries, daily notes
 per project, period notes, period reports (md / csv / zip per project / AI
 brief), projects / clients / custom stages, Danger zone with backups,
-start/stop/autostart, watchdog, portable mode. 63 replay checks.
+start/stop/autostart, watchdog, portable mode, window and row merge. 71 replay checks.
 
 Owner preferences learned so far:
 - **Altium depth first**; other software is secondary and optional.

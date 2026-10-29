@@ -65,6 +65,11 @@ def connect(path):
     if "parent_id" not in cols:
         # one client job can hold several Altium projects (main board + test jig)
         c.execute("ALTER TABLE projects ADD COLUMN parent_id TEXT")
+    ocols = {r["name"] for r in c.execute("PRAGMA table_info(obs)")}
+    if "tools" not in ocols:
+        # hand entries and merges list the software used in their window,
+        # e.g. "Altium (ESC_Board.PcbDoc), Edge"
+        c.execute("ALTER TABLE obs ADD COLUMN tools TEXT")
     lcols = {r["name"] for r in c.execute("PRAGMA table_info(labels)")}
     if "project_guess" not in lcols:
         # 1 = no signal named the project; it was guessed from nearby work and
@@ -173,7 +178,7 @@ def close_open_intervals(c, tick):
         return 0
     hb = float(hb)
     n = c.execute("UPDATE obs SET t1=? WHERE t1>? AND t0<=?"
-                  " AND COALESCE(collector,'') NOT IN ('manual','split')", (hb, hb, hb)).rowcount
+                  " AND COALESCE(collector,'') NOT IN ('manual','split','merge')", (hb, hb, hb)).rowcount
     c.commit()
     return n
 
@@ -417,15 +422,19 @@ def create_project(c, name, client=None, parent_id=None, status="active"):
     return pid
 
 
-def add_manual(c, t0, t1, project_id, stage, text):
-    """Hand-entered work: off-PC work (meeting, milling, soldering, study on
-    paper) or a correction for a period the tracker got wrong. It outranks
-    tracked time for the same minutes (see sessionize.intervals)."""
+def add_manual(c, t0, t1, project_id, stage, text, tools=None):
+    """Hand-entered work for a time window: off-PC work (meeting, milling,
+    soldering, study on paper), or a MERGE of whatever was tracked in that
+    window into one block with one project and stage. It outranks tracked
+    time for the same minutes (see sessionize.intervals); blocks crossing the
+    window edges are split there. `tools` keeps the software that was used
+    in the window, comma-separated."""
     if t1 <= t0:
         raise ValueError("end must be after start")
-    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
-                    " VALUES(?,?,?,?,?,?,?)",
-                    (t0, t1, "work", "manual", (text or "")[:200], "", "manual"))
+    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector,tools)"
+                    " VALUES(?,?,?,?,?,?,?,?)",
+                    (t0, t1, "work", "manual", (text or "")[:200], "", "manual",
+                     (tools or None)))
     put_label(c, cur.lastrowid, project_id or None, stage or "unknown", None,
               1.0, "manual", "entered by hand")
     audit(c, "manual:%s" % cur.lastrowid, None,
@@ -437,10 +446,11 @@ def add_manual(c, t0, t1, project_id, stage, text):
 def manual_between(c, t0, t1):
     names = project_names(c)
     return [{"id": r["id"], "t0": r["t0"], "t1": r["t1"], "text": r["title"],
+             "tools": r["tools"] or "",
              "stage": r["stage"], "project_id": r["project_id"],
              "project": names.get(r["project_id"], "")}
             for r in c.execute(
-                "SELECT o.id,o.t0,o.t1,o.title,l.stage,l.project_id FROM obs o"
+                "SELECT o.id,o.t0,o.t1,o.title,o.tools,l.stage,l.project_id FROM obs o"
                 " LEFT JOIN labels l ON l.obs_id=o.id"
                 " WHERE o.collector='manual' AND o.t1>? AND o.t0<? ORDER BY o.t0",
                 (t0, t1))]
@@ -457,21 +467,34 @@ def add_split(c, t0, t1, app, title, wclass, project_id, stage, doc, group=""):
     return cur.lastrowid
 
 
+def add_merge(c, t0, t1, project_id, stage, note, tools, group):
+    """One piece of a row merge: the user joined several rows into one
+    block. Same overlay idea as a split; `tools` lists everything merged."""
+    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector,tools)"
+                    " VALUES(?,?,?,?,?,?,?,?)",
+                    (t0, t1, "work", "merged", (note or "")[:200], "", "merge", tools))
+    put_label(c, cur.lastrowid, project_id or None, stage or "unknown", None, 1.0,
+              "confirmed", "merged by user #%s" % group)
+    return cur.lastrowid
+
+
 def delete_splits(c, ids):
-    """Undo splits: removes only 'split' overlay rows; what was tracked
-    underneath shows again. Every piece made by the same split goes, so the
-    whole row comes back, not just the piece the button was on."""
+    """Undo a split or a merge: removes only 'split' / 'merge' overlay rows;
+    what was tracked underneath shows again. Every piece made by the same
+    action goes, so the whole row comes back, not just one piece."""
     n = 0
     groups = {r["reason"] for r in c.execute(
         "SELECT l.reason FROM labels l JOIN obs o ON o.id=l.obs_id"
-        " WHERE o.collector='split' AND o.id IN (%s)" % ",".join("?" * len(ids)), list(ids))
-        if (r["reason"] or "").startswith("split by user #") and r["reason"] != "split by user #"}
+        " WHERE o.collector IN ('split','merge') AND o.id IN (%s)" % ",".join("?" * len(ids)), list(ids))
+        if (r["reason"] or "").split("#")[0] in ("split by user ", "merged by user ")
+        and not (r["reason"] or "").endswith("#")}
     if groups:
         ids = list(ids) + [r["obs_id"] for r in c.execute(
             "SELECT obs_id FROM labels WHERE reason IN (%s)" % ",".join("?" * len(groups)),
             list(groups))]
     for oid in dict.fromkeys(ids):
-        r = c.execute("SELECT * FROM obs WHERE id=? AND collector='split'", (oid,)).fetchone()
+        r = c.execute("SELECT * FROM obs WHERE id=? AND collector IN ('split','merge')",
+                      (oid,)).fetchone()
         if r:
             audit(c, "delete_split:%s" % oid, dict(r), None)
             c.execute("DELETE FROM labels WHERE obs_id=?", (oid,))
