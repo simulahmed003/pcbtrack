@@ -60,6 +60,7 @@ details.danger{margin-top:16px;border:1px solid #dc2626;border-radius:10px;paddi
 details.danger summary{cursor:pointer;color:#dc2626;font-weight:600}
 .dz{border-top:1px solid var(--line);padding:10px 0}.dz .grid{margin-top:6px}
 button.warnb{background:#dc2626;color:#fff;border-color:#dc2626}
+body.testcopy{box-shadow:inset 0 6px 0 #dc2626}body.testcopy #live{border-left-color:#dc2626}
 button.delb{color:#dc2626;border-color:#dc2626}button.rowdel{color:#dc2626}
 tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(--mut)}tr.pgh.closed td:first-child::before{content:'\25B8  '}
 .dn{display:grid;grid-template-columns:minmax(120px,200px) 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding:8px 0}
@@ -104,6 +105,7 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <div class="sub" style="margin:4px 0 6px"><b>Detected</b> is what was on screen (a fact). <b>Work stage</b> is the tracker's guess
   <span class="pill gp">amber</span> until you pick one; picking relabels that whole row.</div>
   <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="aDocs" disabled>Merge selected rows</button>
+    <button class="s delb delsel" data-t="aDocs" disabled>Delete selected</button>
     <span class="sub">tick two or more rows to join them into one, with one project and work stage</span></div>
   <div class="tw"><table class="alt" id="aDocs"></table></div>
 </details>
@@ -117,7 +119,8 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
 <details class="card" id="otherCard"><summary><h2 style="display:inline">Other software</h2>
   <span class="sub" id="oTot"></span></summary>
   <div class="sub" style="margin:8px 0 6px">Pages and windows outside Altium, same columns. Lower priority: fix them when it matters.</div>
-  <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="oRows" disabled>Merge selected rows</button></div>
+  <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="oRows" disabled>Merge selected rows</button>
+    <button class="s delb delsel" data-t="oRows" disabled>Delete selected</button></div>
   <div class="tw"><table class="alt" id="oRows"></table></div>
 </details>
 
@@ -152,7 +155,8 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <div class="sub">The tracker guesses; you decide. <span class="pill gp">guessed project</span> rows had nothing
   on screen naming a project, so the last project you worked on was used. Ignore them and they stay as guessed.</div>
   <div class="flex"><label class="sw"><input type="checkbox" id="cadOnly" checked> Altium / CAD blocks only</label>
-  <button class="s p" id="acceptAll">Accept all as shown</button></div></div>
+  <button class="s p" id="acceptAll">Accept all as shown</button>
+  <button class="s delb" id="revDel" disabled>Delete selected</button></div></div>
   <div class="tw"><table id="review"></table></div>
 </div>
 
@@ -366,8 +370,10 @@ function bindRows(tbl,rows){
     await post('/api/merge/undo',{ids:rows[+b.dataset.i].merge_ids}); load()});
   tbl._rows=rows;
   const btn=document.querySelector(`.mergebtn[data-t="${tbl.id}"]`);
+  const dbtn=document.querySelector(`.delsel[data-t="${tbl.id}"]`);
   const upd=()=>{const n=tbl.querySelectorAll('.rowpick:checked').length;
-    if(btn){btn.disabled=n<2;btn.textContent=n>=2?`Merge ${n} selected rows`:'Merge selected rows'}};
+    if(btn){btn.disabled=n<2;btn.textContent=n>=2?`Merge ${n} selected rows`:'Merge selected rows'}
+    if(dbtn){dbtn.disabled=n<1;dbtn.textContent=n?`Delete ${n} selected`:'Delete selected'}};
   tbl.querySelectorAll('.rowpick').forEach(c=>c.onchange=()=>{dirty=true;upd()}); upd();
 }
 
@@ -464,13 +470,15 @@ function drawTimeline(){
     <span style="margin-left:14px"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--guess);margin-right:5px"></i>work, project guessed</span>`;
 }
 
+function revUpd(){const n=$('review').querySelectorAll('.revpick:checked').length;
+  $('revDel').disabled=!n; $('revDel').textContent=n?`Delete ${n} selected`:'Delete selected'}
 function drawReview(){
   const all=D.review||[], rows=$('cadOnly').checked?all.filter(r=>r.cad):all;
-  if(!rows.length&&all.length){$('review').innerHTML=`<tr><td class="muted">No Altium blocks need review. ${all.length} other block(s) hidden &mdash; untick "Altium / CAD blocks only" to see them.</td></tr>`;return}
-  if(!rows.length){$('review').innerHTML='<tr><td class="muted">Nothing needs review. Every block is labelled with confidence.</td></tr>';return}
-  $('review').innerHTML='<tr><th>When</th><th>Length</th><th>What was on screen</th><th>Project</th><th>Stage</th><th></th></tr>'+
+  if(!rows.length&&all.length){$('review').innerHTML=`<tr><td class="muted">No Altium blocks need review. ${all.length} other block(s) hidden &mdash; untick "Altium / CAD blocks only" to see them.</td></tr>`;revUpd();return}
+  if(!rows.length){$('review').innerHTML='<tr><td class="muted">Nothing needs review. Every block is labelled with confidence.</td></tr>';revUpd();return}
+  $('review').innerHTML='<tr><th><input type="checkbox" id="revAll" title="select all"></th><th>When</th><th>Length</th><th>What was on screen</th><th>Project</th><th>Stage</th><th></th></tr>'+
     rows.map(r=>`<tr data-id="${r.id}" class="${r.guess?'guess':''}">
-      <td>${HH(r.t0)}</td><td><b>${F(r.secs)}</b></td>
+      <td><input type="checkbox" class="revpick"></td><td>${HH(r.t0)}</td><td><b>${F(r.secs)}</b></td>
       <td>${esc(r.app)}<div class="sub">${esc((r.title||'').slice(0,70))}${r.doc?` &middot; <span class="pill">${esc(r.doc)}</span>`:''}${r.guess?` <span class="pill gp">guessed project</span>`:''}</div></td>
       <td><select class="rp">${projOpts(r.project_id)}</select></td>
       <td><select class="rs">${stageOpts(r.stage||'unknown')}</select></td>
@@ -480,8 +488,11 @@ function drawReview(){
       await post('/api/label',{ids:[r.id],project_id:tr.querySelector('.rp').value||null,
         stage:tr.querySelector('.rs').value,source:'confirmed'});
       load()};
+    tr.querySelector('.revpick').onchange=()=>{dirty=true;revUpd()};
     tr.querySelector('.del').onclick=()=>deleteRecords([r.id],
-      `${HH(r.t0)} ${r.app||''} ${(r.title||'').slice(0,50)} (${F(r.secs)})`)})
+      `${HH(r.t0)} ${r.app||''} ${(r.title||'').slice(0,50)} (${F(r.secs)})`)});
+  $('revAll').onchange=e=>{$('review').querySelectorAll('.revpick').forEach(c=>c.checked=e.target.checked);dirty=true;revUpd()};
+  revUpd()
 }
 
 function drawProjDocs(){
@@ -567,7 +578,9 @@ async function tick(){
   const st=n.state==='work'?(n.stage||'working'):(n.state||'-');
   $('lnow').textContent=!n.running?(n.stopped_by_user?'tracking stopped':'stopped unexpectedly'):(n.live?st:'starting…');
   $('lnow').style.color=!n.running&&!n.stopped_by_user?'#dc2626':'';
-  $('trk').textContent=n.running?'Stop tracking':'Start tracking';
+  if(n.test_copy){document.body.classList.add('testcopy');$('trk').disabled=true;$('auto').disabled=true;
+    $('lnow').textContent='TEST COPY - not your live data'}
+  else $('trk').textContent=n.running?'Stop tracking':'Start tracking';
   $('trk').className='s'+(n.running?'':' p');
   if(document.activeElement!==$('auto'))$('auto').checked=!!n.autostart;
   $('ldoc').textContent=n.doc||((n.app||'').replace(/\.exe$/i,'')||'—');
@@ -711,6 +724,17 @@ $('full24').onchange=()=>drawTimeline();
 $('splitAdd').onclick=()=>{$('splitLines').insertAdjacentHTML('beforeend',splitLine('',0));splitTotal()};
 $('splitCancel').onclick=()=>$('splitDlg').close();
 document.querySelectorAll('.mergebtn').forEach(b=>b.onclick=()=>openMerge(b.dataset.t));
+document.querySelectorAll('.delsel').forEach(b=>b.onclick=()=>{
+  const tbl=$(b.dataset.t), rows=tbl._rows||[];
+  const pick=[...tbl.querySelectorAll('.rowpick:checked')].map(c=>rows[+c.dataset.i]);
+  if(!pick.length)return;
+  deleteRecords(pick.flatMap(r=>r.ids),
+    `${pick.length} row(s), ${F(pick.reduce((x,r)=>x+r.secs,0))}:\n`+pick.slice(0,8).map(r=>'- '+r.item).join('\n')+(pick.length>8?'\n...':''))});
+$('revDel').onclick=()=>{
+  const trs=[...$('review').querySelectorAll('tr[data-id]')].filter(t=>t.querySelector('.revpick').checked);
+  if(!trs.length)return;
+  const rs=trs.map(t=>(D.review||[]).find(r=>r.id==t.dataset.id)).filter(Boolean);
+  deleteRecords(rs.map(r=>r.id),`${rs.length} block(s), ${F(rs.reduce((x,r)=>x+r.secs,0))}`)};
 $('mgCancel').onclick=()=>$('mergeDlg').close();
 $('mgSave').onclick=async()=>{
   if(!MERGE||MERGE.length<2){$('mergeDlg').close();return}

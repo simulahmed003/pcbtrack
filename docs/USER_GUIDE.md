@@ -96,6 +96,10 @@ its time counts as *not tracked*. Nothing is erased: a **Deleted records**
 card appears with each deletion and a **Restore** button that puts it back
 exactly as it was. (To erase whole days for good, use Settings -> Danger zone.)
 
+To delete several at once, tick their boxes and press **Delete N selected**:
+above the Altium and Other software tables (next to *Merge selected rows*),
+and above Review, which also has a select-all box in its header.
+
 ### Merging rows into one
 
 When several rows were really one piece of work (a footprint plus the

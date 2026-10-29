@@ -46,6 +46,9 @@ DEFAULTS = {
     # the dashboard restarts a tracker that stopped without being asked;
     # set false for a test dashboard pointed at a copy of the data
     "watchdog": True,
+    # a dashboard on a COPY of the data, for testing: shows a banner, never
+    # starts or stops a tracker, no watchdog
+    "test_copy": False,
     "doctype_stage": {
         "SCH": "schematic",
         # an open PcbDoc says "PCB work", not which part of it: placement vs

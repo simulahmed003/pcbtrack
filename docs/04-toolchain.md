@@ -55,13 +55,14 @@ into a scratch folder and point a second dashboard at it:
 ```
 mkdir C:\tmp\pt
 python -c "import sqlite3,os; s=sqlite3.connect(os.path.expandvars(r'%LOCALAPPDATA%\pcbtrack\activity.db')); d=sqlite3.connect(r'C:\tmp\pt\activity.db'); s.backup(d)"
-echo {"port": 18902, "watchdog": false} > C:\tmp\pt\config.json
+echo {"port": 18902, "test_copy": true} > C:\tmp\pt\config.json
 set PCBTRACK_DATA=C:\tmp\pt
 python -m pcbtrack serve
 ```
 
-`"watchdog": false` matters: otherwise the test dashboard starts a second
-tracker that records into the copy (happened on 2026-10-29).
+`"test_copy": true` matters: it disables the watchdog and the Start/Stop
+buttons and shows a red TEST COPY banner. Without it a test dashboard could
+start a second tracker recording into the copy (happened twice on 2026-10-29).
 
 Restart the live tracker after code changes with `python -m pcbtrack stop
 --all`, then `track.bat` and `dashboard.bat`.

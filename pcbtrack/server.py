@@ -86,6 +86,7 @@ class H(BaseHTTPRequestHandler):
                 n["running"] = tracker.is_running(CFG)
                 n["autostart"] = os.path.exists(tracker.startup_file())
                 n["stopped_by_user"] = _stopped_by_user(c)
+                n["test_copy"] = bool(CFG.get("test_copy"))
                 return self._send(200, n)
             if u.path == "/api/absorb":
                 # preview for "Add or merge time": what the window would absorb
@@ -202,6 +203,8 @@ class H(BaseHTTPRequestHandler):
                                        body.get("stage") or "unknown",
                                        (body.get("text") or "")[:200], tools)
                 return self._send(200, {"ok": True, "id": oid})
+            if u.path in ("/api/tracker", "/api/autostart") and CFG.get("test_copy"):
+                return self._send(400, {"error": "test copy: tracking controls are disabled"})
             if u.path == "/api/tracker":
                 from . import tracker
                 if body.get("action") == "stop":
@@ -417,7 +420,7 @@ def serve(cfg=None, open_browser=True):
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
-        if CFG.get("watchdog", True):     # off for test dashboards on copied data
+        if CFG.get("watchdog", True) and not CFG.get("test_copy"):   # never on a test copy
             threading.Thread(target=_watchdog, daemon=True).start()
         srv.serve_forever()
     except KeyboardInterrupt:

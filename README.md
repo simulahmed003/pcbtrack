@@ -21,7 +21,7 @@ short note per project, and export a report for yourself or your client.
 - **Honest.** Every automatic label is marked as a guess until you confirm it,
   and reports say how much of the time you confirmed.
 
-> Status: **v0.11.0**, in daily use by the author since October 2026. Windows
+> Status: **v0.11.1**, in daily use by the author since October 2026. Windows
 > only for live tracking. See [CHANGELOG.md](CHANGELOG.md).
 
 ---

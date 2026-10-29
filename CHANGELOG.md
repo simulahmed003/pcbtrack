@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.1 - 2026-10-29
+Added
+- Delete several records at once: "Delete N selected" above the Altium and
+  Other software tables (same tick boxes as merge) and above Review, which
+  gets tick boxes and a select-all box.
+- `test_copy` setting for dashboards on copied data: red TEST COPY marking,
+  Start/Stop and autostart disabled, no watchdog. A test dashboard had
+  started a second tracker recording into a copy.
+
 ## 0.11.0 - 2026-10-29
 Added
 - Delete a record: **Delete** next to Save in Review, and **delete** on every
