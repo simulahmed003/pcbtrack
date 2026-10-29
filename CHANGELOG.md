@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0 - 2026-10-29
+Added
+- Delete a record: **Delete** next to Save in Review, and **delete** on every
+  Altium / Other software row, with confirmation. Implemented as a 'deleted'
+  overlay: the record leaves every table and total and its time counts as
+  not tracked; the tracked rows stay underneath.
+- "Deleted records" card for the day with **Restore** per deletion.
+
 ## 0.10.1 - 2026-10-29
 Added
 - Approve before merging: "Add / merge" first shows every tracked record

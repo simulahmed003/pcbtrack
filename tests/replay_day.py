@@ -451,6 +451,25 @@ def _run():
     check("the lock screen counts as locked, not work", st9.get("locked", 0) >= 50, str(st9))
     check("undo merge brings the original rows back",
           {"Buttons.SchDoc", "ESC_Board.PcbDoc"} <= back9 and "power stage rework" not in back9, str(back9))
+    # delete a record: gone from tables and totals, time becomes not tracked;
+    # restore brings it back
+    s_before = _rp.summary(c9, cfg9, day, now=end9)
+    edge = [r for r in s_before["other_rows"] if "BTN7960" in r["item"]][0]
+    _rp.delete_blocks(c9, cfg9, day, edge["ids"])
+    s_del = _rp.summary(c9, cfg9, day, now=end9)
+    check("deleted record leaves the tables",
+          not [r for r in s_del["other_rows"] if "BTN7960" in r["item"]])
+    check("deleted time is not counted as work",
+          abs(s_before["work_s"] - s_del["work_s"] - edge["secs"]) < 1,
+          "%.0f -> %.0f (row %.0f)" % (s_before["work_s"], s_del["work_s"], edge["secs"]))
+    check("deleted records are listed for restore",
+          len(s_del["deleted"]) == 1 and "BTN7960" in s_del["deleted"][0]["what"][0], str(s_del["deleted"]))
+    ok_d, g_d, w_d = sessionize.check_invariant(report_load(c9, cfg9, day, end9)[0], t0, t1, now=end9)
+    check("24h accounting exact after a delete", ok_d, "%.0fs vs %.0fs" % (g_d, w_d))
+    store.delete_splits(c9, s_del["deleted"][0]["ids"])
+    s_back = _rp.summary(c9, cfg9, day, now=end9)
+    check("restore brings the record back",
+          abs(s_back["work_s"] - s_before["work_s"]) < 1 and not s_back["deleted"])
     c9.close()
 
     # a tick error under pythonw (no stderr) must not stop the tracker

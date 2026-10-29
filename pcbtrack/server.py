@@ -26,6 +26,7 @@ class H(BaseHTTPRequestHandler):
     POST /api/label        set project / stage for block ids
     POST /api/split        split a row between projects; /api/split/undo
     POST /api/merge        join selected rows into one; /api/merge/undo
+    POST /api/delete       hide records (not tracked); /api/delete/undo restores
     POST /api/manual       hand entry; /api/manual/delete
     POST /api/daynote      the one note per project per day
     POST /api/note         period note; /api/note/delete
@@ -231,7 +232,11 @@ class H(BaseHTTPRequestHandler):
                                       body.get("stage") or "unknown",
                                       (body.get("note") or "").strip())
                 return self._send(200, {"ok": n > 0, "pieces": n})
-            if u.path in ("/api/split/undo", "/api/merge/undo"):
+            if u.path == "/api/delete":
+                day = dt.date.fromisoformat(body["date"])
+                n = report.delete_blocks(c, CFG, day, [int(i) for i in body["ids"]])
+                return self._send(200, {"ok": n > 0, "pieces": n})
+            if u.path in ("/api/split/undo", "/api/merge/undo", "/api/delete/undo"):
                 n = store.delete_splits(c, [int(i) for i in body["ids"]])
                 return self._send(200, {"ok": True, "removed": n})
             if u.path == "/api/split/undo":

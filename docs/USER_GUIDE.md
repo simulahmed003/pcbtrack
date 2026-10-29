@@ -88,6 +88,14 @@ library, press **split...** under the document name:
 was tracked. The original tracking is never changed by a split, so undo is
 always possible.
 
+### Deleting a record
+
+Every row has a red **delete** button (in Review it sits next to **Save**).
+After a confirmation, the record disappears from all tables and totals and
+its time counts as *not tracked*. Nothing is erased: a **Deleted records**
+card appears with each deletion and a **Restore** button that puts it back
+exactly as it was. (To erase whole days for good, use Settings -> Danger zone.)
+
 ### Merging rows into one
 
 When several rows were really one piece of work (a footprint plus the
@@ -148,6 +156,8 @@ includes Altium counts as Altium time.
 The biggest uncertain blocks first. By default it shows only Altium blocks;
 untick **Altium / CAD blocks only** to see the rest. Set the project and stage
 and press **Save**, or **Accept all as shown** to confirm everything listed.
+**Delete** next to Save removes a record that should not count (see
+"Deleting a record" above; it can be restored).
 
 ## 9. Breakdown cards
 

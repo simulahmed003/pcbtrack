@@ -200,6 +200,25 @@ def absorbed(conn, cfg, t0, t1, exclude_id=None, limit=40):
             "replaces": prior}
 
 
+def delete_blocks(conn, cfg, day, ids):
+    """Delete records: each interval of the given blocks gets a 'deleted'
+    overlay, so the time drops out of every table and total and shows as not
+    tracked. Restore removes the overlays (store.delete_splits)."""
+    want = set(ids)
+    iv, _, _ = load_day(conn, cfg, day, backfill=False)
+    sel = [x for x in iv if x["id"] in want and x["state"] == "work"]
+    if not sel:
+        return 0
+    group = "%d" % (__import__("time").time() * 1000)
+    for x in sel:
+        what = "%s - %s" % (tool_name(x["app"]) if x["app"] not in ("manual", "merged") else "Hand entry",
+                            x["doc"] or clean_title(x["title"]))
+        store.add_deleted(conn, x["t0"], x["t1"], what, group)
+    store.audit(conn, "delete_blocks", list(ids), {"pieces": len(sel)})
+    conn.commit()
+    return len(sel)
+
+
 def merge_rows(conn, cfg, day, ids, project_id, stage, note):
     """Join table rows into one block: every interval of those rows gets a
     'merge' overlay with one project, one stage, the note, and the combined
@@ -445,6 +464,7 @@ def summary(conn, cfg, day, now=None):
                            for p, d in by_pd.items()},
         "notes": [n for n in notes if n["kind"] != "daily"],
         "daily_notes": store.daily_notes(conn, day.isoformat()),
+        "deleted": store.deleted_between(conn, t0, t1),
         "manual": [dict(m, absorbed=absorbed(conn, cfg, m["t0"], m["t1"], exclude_id=m["id"]))
                    for m in store.manual_between(conn, t0, t1)],
         "timeline": [{"t0": x["t0"], "t1": x["t1"], "state": x["state"],

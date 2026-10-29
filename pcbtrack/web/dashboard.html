@@ -60,6 +60,7 @@ details.danger{margin-top:16px;border:1px solid #dc2626;border-radius:10px;paddi
 details.danger summary{cursor:pointer;color:#dc2626;font-weight:600}
 .dz{border-top:1px solid var(--line);padding:10px 0}.dz .grid{margin-top:6px}
 button.warnb{background:#dc2626;color:#fff;border-color:#dc2626}
+button.delb{color:#dc2626;border-color:#dc2626}button.rowdel{color:#dc2626}
 tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(--mut)}tr.pgh.closed td:first-child::before{content:'\25B8  '}
 .dn{display:grid;grid-template-columns:minmax(120px,200px) 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding:8px 0}
 .dn textarea{min-height:54px}.dn .st{font-size:12px;color:var(--mut)}
@@ -105,6 +106,12 @@ tr.pgh{cursor:pointer}tr.pgh td:first-child::before{content:'\25BE  ';color:var(
   <div class="flex" style="margin-bottom:6px"><button class="s mergebtn" data-t="aDocs" disabled>Merge selected rows</button>
     <span class="sub">tick two or more rows to join them into one, with one project and work stage</span></div>
   <div class="tw"><table class="alt" id="aDocs"></table></div>
+</details>
+
+<details class="card" id="delCard" hidden><summary><h2 style="display:inline">Deleted records</h2>
+  <span class="sub" id="delSum"></span></summary>
+  <div class="sub" style="margin:8px 0">Deleted time counts as <em>not tracked</em>. Restore puts the record back exactly as it was.</div>
+  <div id="delList"></div>
 </details>
 
 <details class="card" id="otherCard"><summary><h2 style="display:inline">Other software</h2>
@@ -329,7 +336,7 @@ function rowsTable(rows,saves,empty){
     const pid=(D.projects.find(p=>p.name===r.project)||{}).id||'';
     h+=`<tr class="${r.confirmed?'':'guess'}" data-in="${esc(r.project)}"${COLL.has(r.project)?' hidden':''}><td><input type="checkbox" class="rowpick" data-i="${i}" title="select to merge"></td>
       <td class="muted" style="white-space:nowrap">${HH(r.first)}&ndash;${HH(r.last)}</td><td>${esc(r.item)}
-        <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}${r.merge_ids?`<button class="x rowunmerge" data-i="${i}">undo merge</button>`:''}</div></td>
+        <div class="flex" style="gap:4px;margin-top:3px"><button class="x rowsplit" data-i="${i}">split&hellip;</button><button class="x rowdel" data-i="${i}" title="delete this record">delete</button>${r.split_ids?`<button class="x rowundo" data-i="${i}">undo split</button>`:''}${r.merge_ids?`<button class="x rowunmerge" data-i="${i}">undo merge</button>`:''}</div></td>
       <td><select class="rowproj projsel" data-i="${i}">${projOpts(pid)}</select></td>
       <td class="muted">${esc(r.detected)}</td>
       <td><select class="rs rowstage" data-i="${i}">${stageOpts(r.stage)}</select>${r.confirmed?'':' <span class="pill gp">guess</span>'}</td>
@@ -349,6 +356,8 @@ function bindRows(tbl,rows){
     if(sel.value===NEW)return;
     await post('/api/label',{ids:rows[+sel.dataset.i].ids,project_id:sel.value||null,source:'confirmed'}); load()});
   tbl.querySelectorAll('.rowsplit').forEach(b=>b.onclick=()=>openSplit(rows[+b.dataset.i]));
+  tbl.querySelectorAll('.rowdel').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.i];
+    deleteRecords(r.ids,`${r.item} (${r.detected}, ${HH(r.first)}–${HH(r.last)}, ${F(r.secs)})`)});
   tbl.querySelectorAll('.rowundo').forEach(b=>b.onclick=async()=>{
     if(!confirm('Undo the split for this row? The time goes back to what was tracked.'))return;
     await post('/api/split/undo',{ids:rows[+b.dataset.i].split_ids}); load()});
@@ -361,6 +370,22 @@ function bindRows(tbl,rows){
     if(btn){btn.disabled=n<2;btn.textContent=n>=2?`Merge ${n} selected rows`:'Merge selected rows'}};
   tbl.querySelectorAll('.rowpick').forEach(c=>c.onchange=()=>{dirty=true;upd()}); upd();
 }
+
+// ---- delete records (reversible: see "Deleted records") ----
+async function deleteRecords(ids,label){
+  if(!ids||!ids.length)return;
+  if(!confirm(`Delete this record?\n\n${label}\n\nIts time will count as not tracked. You can restore it under "Deleted records".`))return;
+  const r=await post('/api/delete',{date:$('date').value,ids});
+  if(!r.ok)alert('Nothing was deleted'); load()}
+function drawDeleted(){
+  const d=D.deleted||[];
+  $('delCard').hidden=!d.length;
+  $('delSum').textContent=d.length?` · ${d.length} today, ${F(d.reduce((x,g)=>x+g.secs,0))}`:'';
+  $('delList').innerHTML=d.map((g,i)=>`<div class="item"><div><b>${HH(g.t0)}&ndash;${HH(g.t1)}</b> (${F(g.secs)}${g.ids.length>1?` in ${g.ids.length} pieces`:''})
+    <div class="sub">${esc(g.what.slice(0,4).join('; '))}${g.what.length>4?' &hellip;':''}</div></div>
+    <button class="s" data-restore="${i}">Restore</button></div>`).join('');
+  $('delList').querySelectorAll('[data-restore]').forEach(b=>b.onclick=async()=>{
+    await post('/api/delete/undo',{ids:d[+b.dataset.restore].ids}); load()})}
 
 // ---- merge ticked rows into one ----
 let MERGE=null;
@@ -449,12 +474,14 @@ function drawReview(){
       <td>${esc(r.app)}<div class="sub">${esc((r.title||'').slice(0,70))}${r.doc?` &middot; <span class="pill">${esc(r.doc)}</span>`:''}${r.guess?` <span class="pill gp">guessed project</span>`:''}</div></td>
       <td><select class="rp">${projOpts(r.project_id)}</select></td>
       <td><select class="rs">${stageOpts(r.stage||'unknown')}</select></td>
-      <td><button class="s p ok">Save</button></td></tr>`).join('');
+      <td style="white-space:nowrap"><button class="s p ok">Save</button> <button class="s delb del">Delete</button></td></tr>`).join('');
   rows.forEach(r=>{const tr=$('review').querySelector(`tr[data-id="${r.id}"]`);
     tr.querySelector('.ok').onclick=async()=>{
       await post('/api/label',{ids:[r.id],project_id:tr.querySelector('.rp').value||null,
         stage:tr.querySelector('.rs').value,source:'confirmed'});
-      load()}})
+      load()};
+    tr.querySelector('.del').onclick=()=>deleteRecords([r.id],
+      `${HH(r.t0)} ${r.app||''} ${(r.title||'').slice(0,50)} (${F(r.secs)})`)})
 }
 
 function drawProjDocs(){
@@ -573,7 +600,7 @@ async function load(){
   if(document.activeElement!==$('sDirs'))$('sDirs').value=(D.project_dirs||[]).join('\n');
   $('sub').innerHTML='local only &middot; nothing uploaded'+
     (D.unassigned_s>0?` &middot; <span class="warn">${F(D.unassigned_s)} not assigned to a project</span>`:'');
-  drawDanger(); drawDayNotes(); drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
+  drawDanger(); drawDayNotes(); drawDeleted(); drawAltium(); drawTimeline(); drawReview(); drawProjects(); drawProjDocs(); drawManual(); drawNotes();
   bars('stage',D.by_stage); bars('proj',D.by_project); bars('app',D.by_app);
   const keepM=$('mProj').value, keepS=$('mStage').value;
   $('mProj').innerHTML=projOpts(keepM&&keepM!==NEW?keepM:'','(no project)');

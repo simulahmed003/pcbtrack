@@ -7,7 +7,7 @@ Nothing is double counted; a second belongs to one state and one project.
 import datetime as dt
 
 STATES = ("work", "idle", "locked", "off")
-OVERLAYS = ("manual", "split", "merge")
+OVERLAYS = ("manual", "split", "merge", "deleted")
 
 
 def day_window(day, cutover=0):
@@ -48,6 +48,8 @@ def intervals(conn, t0, t1, join_gap=11.0, overlays=True):
                  (keeps the app, document and stage of what was tracked)
       'merge'  - several rows the user joined into one block (one project,
                  one stage; the software used is kept in `tools`)
+      'deleted'- time the user deleted: it cuts out what is underneath and
+                 adds nothing, so those minutes become "not tracked"
     The tracked rows underneath are never changed, so an overlay can always
     be removed to get back what was observed."""
     rows = conn.execute(
@@ -93,7 +95,8 @@ def intervals(conn, t0, t1, join_gap=11.0, overlays=True):
                 cut.append(dict(x, t1=m["t0"], secs=m["t0"] - x["t0"]))
             if x["t1"] > m["t1"]:
                 cut.append(dict(x, t0=m["t1"], secs=x["t1"] - m["t1"]))
-        cut.append(m)
+        if r["collector"] != "deleted":
+            cut.append(m)
         out = cut
     out.sort(key=lambda x: x["t0"])
     return out

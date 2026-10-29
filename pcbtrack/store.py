@@ -178,7 +178,7 @@ def close_open_intervals(c, tick):
         return 0
     hb = float(hb)
     n = c.execute("UPDATE obs SET t1=? WHERE t1>? AND t0<=?"
-                  " AND COALESCE(collector,'') NOT IN ('manual','split','merge')", (hb, hb, hb)).rowcount
+                  " AND COALESCE(collector,'') NOT IN ('manual','split','merge','deleted')", (hb, hb, hb)).rowcount
     c.commit()
     return n
 
@@ -467,6 +467,33 @@ def add_split(c, t0, t1, app, title, wclass, project_id, stage, doc, group=""):
     return cur.lastrowid
 
 
+def add_deleted(c, t0, t1, what, group):
+    """One piece of a delete: hides [t0,t1) everywhere (it counts as not
+    tracked). The tracked rows stay underneath, so it can be restored."""
+    cur = c.execute("INSERT INTO obs(t0,t1,state,app,title,wclass,collector)"
+                    " VALUES(?,?,?,?,?,?,?)",
+                    (t0, t1, "work", "deleted", (what or "")[:200], "", "deleted"))
+    put_label(c, cur.lastrowid, None, "unknown", None, 1.0, "confirmed",
+              "deleted by user #%s" % group)
+    return cur.lastrowid
+
+
+def deleted_between(c, t0, t1):
+    """Deletes overlapping [t0,t1), one entry per delete action."""
+    groups = {}
+    for r in c.execute(
+            "SELECT o.id,o.t0,o.t1,o.title,l.reason FROM obs o JOIN labels l ON l.obs_id=o.id"
+            " WHERE o.collector='deleted' AND o.t1>? AND o.t0<? ORDER BY o.t0", (t0, t1)):
+        g = groups.setdefault(r["reason"], {"ids": [], "t0": r["t0"], "t1": r["t1"],
+                                            "secs": 0.0, "what": []})
+        g["ids"].append(r["id"])
+        g["t0"], g["t1"] = min(g["t0"], r["t0"]), max(g["t1"], r["t1"])
+        g["secs"] += r["t1"] - r["t0"]
+        if r["title"] and r["title"] not in g["what"]:
+            g["what"].append(r["title"])
+    return sorted(groups.values(), key=lambda g: g["t0"])
+
+
 def add_merge(c, t0, t1, project_id, stage, note, tools, group):
     """One piece of a row merge: the user joined several rows into one
     block. Same overlay idea as a split; `tools` lists everything merged."""
@@ -485,15 +512,17 @@ def delete_splits(c, ids):
     n = 0
     groups = {r["reason"] for r in c.execute(
         "SELECT l.reason FROM labels l JOIN obs o ON o.id=l.obs_id"
-        " WHERE o.collector IN ('split','merge') AND o.id IN (%s)" % ",".join("?" * len(ids)), list(ids))
-        if (r["reason"] or "").split("#")[0] in ("split by user ", "merged by user ")
+        " WHERE o.collector IN ('split','merge','deleted') AND o.id IN (%s)"
+        % ",".join("?" * len(ids)), list(ids))
+        if (r["reason"] or "").split("#")[0] in ("split by user ", "merged by user ",
+                                                 "deleted by user ")
         and not (r["reason"] or "").endswith("#")}
     if groups:
         ids = list(ids) + [r["obs_id"] for r in c.execute(
             "SELECT obs_id FROM labels WHERE reason IN (%s)" % ",".join("?" * len(groups)),
             list(groups))]
     for oid in dict.fromkeys(ids):
-        r = c.execute("SELECT * FROM obs WHERE id=? AND collector IN ('split','merge')",
+        r = c.execute("SELECT * FROM obs WHERE id=? AND collector IN ('split','merge','deleted')",
                       (oid,)).fetchone()
         if r:
             audit(c, "delete_split:%s" % oid, dict(r), None)
